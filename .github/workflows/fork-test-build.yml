@@ -1,0 +1,44 @@
+# Test branch only, never for upstream: a Windows portable build of this branch on the fork, on
+# GitHub-hosted runners (upstream's test-build.yml runs only in tangency-labs). Pink app icon so the
+# test build is easy to tell from an installed SolidCraft.
+name: Fork test build (Windows)
+
+on:
+  push:
+    branches: ["test-build/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  windows:
+    if: github.repository_owner != 'tangency-labs'
+    runs-on: windows-2025
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.99.1
+        with:
+          targets: x86_64-pc-windows-msvc
+      - name: Version
+        shell: pwsh
+        run: |
+          $short = "${{ github.sha }}".Substring(0, 7)
+          "SOLIDCRAFT_VERSION=0.47.0-test+$short" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Build and package (portable zip)
+        shell: pwsh
+        run: ./packaging/windows/package.ps1 -Arch x64 -PortableOnly
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: solidcraft-pink-test-windows-portable
+          path: dist/release/*-portable.zip
+          retention-days: 30
+          compression-level: 0
+          if-no-files-found: error
