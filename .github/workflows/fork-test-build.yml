@@ -1,12 +1,18 @@
 # Test branch only, never for upstream: a Windows portable build of this branch on the fork, on
 # GitHub-hosted runners (upstream's test-build.yml runs only in tangency-labs). Pink app icon so the
 # test build is easy to tell from an installed SolidCraft.
-name: Fork test build (Windows)
+name: Fork test build (Windows and macOS)
 
 on:
   push:
     branches: ["test-build/**"]
   workflow_dispatch:
+    inputs:
+      platform:
+        description: "What to build"
+        type: choice
+        options: [both, windows, macos]
+        default: both
 
 permissions:
   contents: read
@@ -17,7 +23,7 @@ env:
 
 jobs:
   windows:
-    if: github.repository_owner != 'tangency-labs'
+    if: github.repository_owner != 'tangency-labs' && (github.event_name == 'push' || inputs.platform != 'macos')
     runs-on: windows-2025
     timeout-minutes: 300
     steps:
@@ -39,6 +45,43 @@ jobs:
         with:
           name: solidcraft-pink-test-windows-portable
           path: dist/release/*-portable.zip
+          retention-days: 30
+          compression-level: 0
+          if-no-files-found: error
+
+  macos:
+    # Apple Silicon only. Ad-hoc signed, not notarized: the first launch needs right-click > Open.
+    if: github.repository_owner != 'tangency-labs' && (github.event_name == 'push' || inputs.platform != 'windows')
+    runs-on: macos-15
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.99.1
+        with:
+          targets: aarch64-apple-darwin
+      - name: Version
+        run: echo "SOLIDCRAFT_VERSION=0.47.0-test+${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+      # The committed icon.icns is already pink; recompile the layered icon from the pink SVG
+      # where this Xcode can (Icon Composer needs Xcode 26), else keep the committed one.
+      - name: Pink layered icon
+        continue-on-error: true
+        run: |
+          mkdir -p target/resources/macos-icon
+          xcrun actool assets/icons/app/macos/source/SolidCraft.icon \
+            --compile target/resources/macos-icon --platform macosx \
+            --minimum-deployment-target 11.0 --app-icon SolidCraft \
+            --output-partial-info-plist target/resources/macos-icon/icon-info.plist \
+            --output-format human-readable-text
+          cp target/resources/macos-icon/Assets.car assets/icons/app/macos/exports/Assets.car
+          cp target/resources/macos-icon/SolidCraft.icns assets/icons/app/macos/exports/icon.icns
+      - name: Build and package (dmg, ad-hoc signed)
+        run: packaging/macos/package.sh --arch aarch64
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: solidcraft-pink-test-macos-dmg
+          path: dist/release/*.dmg
           retention-days: 30
           compression-level: 0
           if-no-files-found: error

@@ -2,24 +2,24 @@
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1024" height="1024" viewBox="0 0 1024 1024">
   <defs>
     <linearGradient id="linear-gradient-1" x1="619.14" y1="179.734" x2="694.687" y2="396.761" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#1d63c6"/>
-      <stop offset="1" stop-color="#15499e"/>
+      <stop offset="0" stop-color="#c6319e"/>
+      <stop offset="1" stop-color="#9e247e"/>
     </linearGradient>
     <linearGradient id="linear-gradient-2" x1="619.14" y1="413.244" x2="790.839" y2="605.547" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#459fff"/>
-      <stop offset="1" stop-color="#2379e7"/>
+      <stop offset="0" stop-color="#ff4fcc"/>
+      <stop offset="1" stop-color="#e73cb8"/>
     </linearGradient>
     <linearGradient id="linear-gradient-3" x1="632.876" y1="399.508" x2="783.971" y2="968.175" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#1b66cf"/>
-      <stop offset="1" stop-color="#124596"/>
+      <stop offset="0" stop-color="#cf33a5"/>
+      <stop offset="1" stop-color="#962278"/>
     </linearGradient>
     <linearGradient id="linear-gradient-4" x1="207.063" y1="303.357" x2="426.837" y2="968.175" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#258df5"/>
-      <stop offset="1" stop-color="#1461da"/>
+      <stop offset="0" stop-color="#f546c4"/>
+      <stop offset="1" stop-color="#da30ae"/>
     </linearGradient>
     <linearGradient id="linear-gradient-5" x1="385.63" y1="53.364" x2="522.989" y2="510.769" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#51adff"/>
-      <stop offset="1" stop-color="#2b83f1"/>
+      <stop offset="0" stop-color="#ff56cc"/>
+      <stop offset="1" stop-color="#f141c0"/>
     </linearGradient>
   </defs>
   <title>SolidCraft • blue cutout 36 pt</title>
