@@ -179,6 +179,22 @@ fn render_help_keeps_the_registered_gpu_request_controls() {
     }
 }
 
+/// `--max-import-bodies` (#17730), with any command: the usage names it, a count out of range or
+/// not a count stops the run with the reason, and one in range runs.
+#[test]
+fn max_import_bodies_raises_the_limit_and_refuses_bad_counts() {
+    let output = Command::new(env!("CARGO_BIN_EXE_solidcraft-cli")).arg("--help").output().unwrap();
+    assert!(String::from_utf8_lossy(&output.stdout).contains("--max-import-bodies"));
+    for count in ["49999", "500001", "lots"] {
+        let output = Command::new(env!("CARGO_BIN_EXE_solidcraft-cli")).args(["--max-import-bodies", count, "exec", "file.new"]).output().unwrap();
+        assert!(!output.status.success(), "{count} was accepted");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(stderr.starts_with("error: --max-import-bodies"), "{count}: {stderr}");
+    }
+    let output = Command::new(env!("CARGO_BIN_EXE_solidcraft-cli")).args(["exec", "file.new", "--max-import-bodies=200000"]).output().unwrap();
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+}
+
 /// `--max-file-size` (#4086), with any command: the usage names it, a bad size stops the run
 /// with the reason, and a design over the default limit opens once the flag raises it.
 #[test]

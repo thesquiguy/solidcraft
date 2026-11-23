@@ -1003,6 +1003,24 @@ pub fn apply_sketch_limit(p: &Prefs) {
     }
 }
 
+/// The most body instances one import takes, as the preferences ask (Preferences › General › Most
+/// bodies in one import, #17730); a value out of range (a hand edit), and any value in the
+/// browser, reads as the default.
+pub fn import_body_limit(p: &Prefs) -> usize {
+    if solidcraft_engine::io::limits::ADJUSTABLE && accepted::max_import_bodies(p) {
+        p.max_import_bodies
+    } else {
+        solidcraft_engine::kernel::IMPORT_DEFAULT_MAX_BODIES
+    }
+}
+
+/// Every STEP file read from now on takes up to [`import_body_limit`] body instances.
+pub fn apply_import_body_limit(p: &Prefs) {
+    if let Err(e) = solidcraft_engine::kernel::set_import_max_bodies(import_body_limit(p)) {
+        log::warn!("preferences: most bodies in one import: {e}");
+    }
+}
+
 /// The STEP files read from now on heal the parts SMLib's check fails, and Repair heals a part
 /// first, as the preference says (Preferences › Design › Imported files). A read already done
 /// keeps what it was read with until the design is evaluated again.
@@ -1508,6 +1526,11 @@ preference_settings! {
     max_step_file_mb: u64 = DEFAULT_STEP_MB, PAGE_GENERAL;
     /// The largest design file opened or saved, in MB (#4086): from the default (256) up to 16 GB.
     max_design_file_mb: u64 = DEFAULT_DESIGN_MB, PAGE_GENERAL;
+    /// The most body instances one STEP import takes (#17730): from the default (50000) up to
+    /// 500000, for machine and cabinet assemblies with every part placed. The browser keeps the
+    /// default.
+    max_import_bodies: usize = solidcraft_engine::kernel::IMPORT_DEFAULT_MAX_BODIES, PAGE_GENERAL,
+        accept(solidcraft_engine::kernel::IMPORT_DEFAULT_MAX_BODIES..=solidcraft_engine::kernel::IMPORT_CEILING_BODIES);
     /// A FreeCAD file opens or inserts as its sketches and features, rebuilt; off brings in only
     /// its solids as one Import feature, as before.
     freecad_history: bool = true, PAGE_GENERAL => check_id("settings.freecad_history");
@@ -2837,6 +2860,7 @@ pub fn apply(app: &mut SolveApp, ctx: &egui::Context) {
     }
     apply_file_limits(&app.preferences);
     apply_sketch_limit(&app.preferences);
+    apply_import_body_limit(&app.preferences);
     apply_tolerance_heal(&app.preferences);
     // The viewport's display quality (an unknown saved value draws at Normal).
     solidcraft_engine::doc::display_quality::set_current(
@@ -4695,6 +4719,8 @@ fn limit_disabled_plugins(mut p: Prefs) -> Prefs {
     if !accepted::max_sketch_points(&p) {
         p.max_sketch_points = Prefs::default().max_sketch_points;
     }
+    // So does a most bodies in one import out of range, and any but the default in the browser.
+    p.max_import_bodies = import_body_limit(&p);
     p.plugin_grants.retain(|id, grants| crate::plugins::valid_id(id) && crate::plugins::valid_grants(grants));
     p.plugin_grants = p.plugin_grants.into_iter().take(crate::plugins::MAX_DISABLED).collect();
     for grants in p.plugin_grants.values_mut() {
@@ -5003,6 +5029,15 @@ fn prepare_preferences(
         use solidcraft_engine::sketch::limits::{CEILING_POINTS, DEFAULT_POINTS};
         return Err(format!("`max_sketch_points` must be {DEFAULT_POINTS}…{CEILING_POINTS}"));
     }
+    if new.max_import_bodies != app.preferences.max_import_bodies {
+        use solidcraft_engine::kernel::{IMPORT_CEILING_BODIES, IMPORT_DEFAULT_MAX_BODIES};
+        if !solidcraft_engine::io::limits::ADJUSTABLE && new.max_import_bodies != IMPORT_DEFAULT_MAX_BODIES {
+            return Err("`max_import_bodies` can't change in the web app: a browser tab can't hold larger imports".into());
+        }
+        if !accepted::max_import_bodies(&new) {
+            return Err(format!("`max_import_bodies` must be {IMPORT_DEFAULT_MAX_BODIES}…{IMPORT_CEILING_BODIES}"));
+        }
+    }
     if solidcraft_engine::doc::display_quality::DisplayQuality::parse(&new.display_quality).is_none() {
         return Err("`display_quality` must be coarse, normal, fine or ultra".into());
     }
@@ -5059,6 +5094,7 @@ fn apply_preferences(app: &mut SolveApp, new: Prefs, p: &serde_json::Value) -> R
     crate::render_workspace::apply_memory_policy(app);
     apply_file_limits(&app.preferences);
     apply_sketch_limit(&app.preferences);
+    apply_import_body_limit(&app.preferences);
     apply_tolerance_heal(&app.preferences);
     if units_changed {
         default_units_changed(app);
@@ -10285,6 +10321,38 @@ mod tests {
         h.call("ui.prefs", json!({"button": "defaults"}));
         assert_eq!(h.app.preferences.max_sketch_points, DEFAULT_POINTS);
         h.call("ui.prefs", json!({"button": "cancel"}));
+    }
+
+    /// Preferences › General › Most bodies in one import (#17730): `ui.prefs` raises the limit
+    /// every STEP import reads to, refuses a value out of range, reads a hand-edited one back as
+    /// the default, and General's Restore Defaults puts it back.
+    #[test]
+    fn the_most_bodies_in_one_import_defaults_raises_and_refuses_out_of_range() {
+        use serde_json::json;
+        use solidcraft_engine::kernel::{IMPORT_CEILING_BODIES, IMPORT_DEFAULT_MAX_BODIES, import_max_bodies, set_import_max_bodies};
+        let mut h = crate::scenario::Harness::new();
+        assert_eq!(h.app.preferences.max_import_bodies, IMPORT_DEFAULT_MAX_BODIES);
+        let out = h.call("ui.prefs", json!({"max_import_bodies": 200_000}));
+        assert_eq!(out["result"]["max_import_bodies"].as_u64(), Some(200_000), "{out}");
+        assert_eq!(super::import_body_limit(&h.app.preferences), 200_000);
+        assert_eq!(import_max_bodies(), 200_000, "the reader takes the new limit");
+        for bad in [
+            json!({"max_import_bodies": IMPORT_DEFAULT_MAX_BODIES - 1}),
+            json!({"max_import_bodies": IMPORT_CEILING_BODIES + 1}),
+            json!({"max_import_bodies": "lots"}),
+        ] {
+            assert!(h.call("ui.prefs", bad.clone())["error"].is_string(), "{bad}");
+        }
+        assert_eq!(import_max_bodies(), 200_000, "a refused value changes nothing");
+        assert_eq!(super::lenient(&json!({"max_import_bodies": 5})).max_import_bodies, IMPORT_DEFAULT_MAX_BODIES);
+
+        h.call("ui.prefs", json!({"open": "General"}));
+        h.frames(2);
+        super::reveal_preference(&mut h, "prefs:max_import_bodies");
+        h.call("ui.prefs", json!({"button": "defaults"}));
+        assert_eq!(h.app.preferences.max_import_bodies, IMPORT_DEFAULT_MAX_BODIES);
+        h.call("ui.prefs", json!({"button": "cancel"}));
+        set_import_max_bodies(IMPORT_DEFAULT_MAX_BODIES).unwrap();
     }
 
     #[test]

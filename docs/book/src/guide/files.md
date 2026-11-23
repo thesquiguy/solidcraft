@@ -329,6 +329,16 @@ Before you raise them:
 - **Web app:** the browser version keeps 512 MB and 256 MB: a browser tab can't hold larger files.
   Its Preferences show a note instead of the setting.
 
+### Assemblies with many bodies
+
+One STEP import places up to **50,000 bodies** (every placed copy of a part counts, so a screw
+used 500 times is 500 bodies). A file that places more is refused with a message that says so; it
+is never read in part, so no part of an assembly is left out or misplaced without a word. In the
+desktop app, **Preferences › General › Most bodies in one import** raises the limit up to 500,000,
+and `solidcraft-cli` takes `--max-import-bodies N` for one run. Each body takes memory: 50,000
+small parts need about 5 GB and their parts' own geometry more. A design that keeps such an import
+reopens only where the limit is as high; the web app keeps 50,000.
+
 The control channel sets the same preference with `ui.prefs {"max_step_file_mb": 2048,
 "max_design_file_mb": 1024}`.
 

@@ -767,22 +767,20 @@ fn parallel_import_does_not_prepare_past_body_budget_with_duplicates_or_mapped_i
     for workers in [1, 8] {
         let mut reader = Reader::new(ex.clone(), workers);
         reader.index();
-        reader.bodies = vec![seed.clone(); MAX_BODIES - 2];
+        // A small budget, one body already made: two more fit.
+        reader.max_bodies = 3;
+        reader.bodies = vec![seed.clone()];
         reader.node_items.insert(2000);
         let mut out = Vec::new();
         reader.rep_bodies(60, &IDENTITY, &[], "Budget", None, &mut out, 0);
         assert!(reader.oriented.is_empty() && reader.unreadable.is_empty(), "the walk only plans the solids");
-        while reader.convert_next(workers == 1) {}
-        let (out, _, left_out) = reader.remap(&out);
-        assert_eq!(reader.bodies.len(), MAX_BODIES);
-        assert_eq!(out, vec![MAX_BODIES - 2, MAX_BODIES - 1]);
-        assert!(left_out.is_empty(), "{left_out:?}");
-        assert_eq!(reader.bodies.last().unwrap().name, "Second");
-        assert_eq!(reader.oriented.len(), 2);
-        assert!(!reader.oriented.contains_key(&2003) && !reader.unreadable.contains_key(&2003));
+        // The duplicate is skipped, the two that fit are planned, and the one past the budget
+        // refuses the file (#17730): nothing is read part-way.
+        assert_eq!(reader.plan.iter().map(|p| p.item).collect::<Vec<_>>(), vec![2001, 2002]);
         assert!(!reader.used_items.contains(&3000));
-        assert_eq!(reader.warnings.len(), 1);
-        assert!(reader.warnings.keys().next().unwrap().contains("more than"));
+        let refusal = reader.refusal().unwrap().to_string();
+        assert!(refusal.contains("more than 3 bodies") && refusal.contains("Most bodies in one import"), "{refusal}");
+        assert!(reader.warnings.is_empty(), "{:?}", reader.warnings.keys().collect::<Vec<_>>());
     }
 }
 
@@ -1954,7 +1952,8 @@ fn instanced_assembly_of(parts: u64, n: u64) -> String {
         t += &format!("#{a}=AXIS2_PLACEMENT_3D('',#{},#{},#{});\n", a + 1, a + 2, a + 3);
         t += &format!("#{}=CARTESIAN_POINT('',({}.,0.,0.));\n", a + 1, 50 * k);
         t += &format!("#{}=DIRECTION('',(0.,0.,1.));\n#{}=DIRECTION('',({},{},0.));\n", a + 2, a + 3, turn.cos(), turn.sin());
-        let u = 6000 + k * 10;
+        // Above every placement's ids, however many there are.
+        let u = 3000 + (n + k) * 10;
         t += &format!("#{u}=NEXT_ASSEMBLY_USAGE_OCCURRENCE('{k}','Block:{k}','',#70,#{pd},$);\n");
         t += &format!("#{}=PRODUCT_DEFINITION_SHAPE('','',#{u});\n", u + 1);
         t += &format!("#{}=ITEM_DEFINED_TRANSFORMATION('','',#{},#{a});\n", u + 2, pd + 15);
@@ -2208,9 +2207,85 @@ fn exponential_assemblies_are_bounded() {
     }
     t += &format!("#60=ADVANCED_BREP_SHAPE_REPRESENTATION('',(#101),#20);\n#61=SHAPE_DEFINITION_REPRESENTATION(#{},#60);\n", 1000 + levels * 10 + 4);
     t += TAIL;
-    let imp = step_import(&t).unwrap();
-    assert!(!imp.bodies.is_empty() && imp.bodies.len() <= MAX_BODIES);
-    assert!(imp.warnings.iter().any(|w| w.contains("left out")), "{:?}", imp.warnings);
+    // Refused once the walk passes a cap (here the body instances, 2^30 of one cube), before
+    // any solid is converted.
+    let err = step_import(&t).unwrap_err().to_string();
+    assert!(err.contains(&format!("more than {DEFAULT_MAX_BODIES} bodies")), "{err}");
+}
+
+/// An assembly with more body instances than the reader used to take (10,000, #11526, #17730)
+/// comes in whole: every instance, each at its own place.
+#[test]
+fn assemblies_past_ten_thousand_instances_import_whole() {
+    let n = 10_050u64;
+    let imp = step_import(&instanced_assembly(n)).unwrap();
+    assert!(imp.warnings.is_empty(), "{:?}", imp.warnings);
+    assert_eq!(imp.bodies.len(), n as usize);
+    for k in [0, 9_999, 10_000, n - 1] {
+        let b = &imp.bodies[k as usize];
+        assert_eq!(b.instance.as_deref(), Some(format!("Block:{k}").as_str()));
+        let m = measure(&b.body).unwrap();
+        let centre = (m.bbox.min + m.bbox.max) * 0.5;
+        let turn = k as f64 * 0.7;
+        let expected = Vec3::new(50.0 * k as f64 + 5.0 * (turn.cos() - turn.sin()), 5.0 * (turn.sin() + turn.cos()), 5.0);
+        assert!(centre.dist(expected) < 1e-6, "instance {k}: {centre:?} vs {expected:?}");
+    }
+}
+
+/// The body limit rises only within its range; a refused value changes nothing.
+#[test]
+fn the_body_limit_rises_within_its_range() {
+    assert!(set_max_bodies(DEFAULT_MAX_BODIES - 1).is_err());
+    assert!(set_max_bodies(CEILING_BODIES + 1).is_err());
+    assert_eq!(max_bodies(), DEFAULT_MAX_BODIES, "a refused value changes nothing");
+    assert_eq!(max_visits_for(DEFAULT_MAX_BODIES), 500_000);
+    assert_eq!(CEILING_VISITS, 10 * CEILING_BODIES);
+    assert!(!too_many_bodies(CEILING_BODIES).to_string().contains("Preferences"), "the ceiling can't be raised");
+}
+
+/// A cube part placed 100 mm along X in an assembly, after an empty sub-assembly that uses its
+/// own sub-assembly twice, `levels` deep (2^levels occurrences to walk before the part).
+fn part_after_doubling_assembly(levels: u64) -> String {
+    let mut t = String::from(HEAD);
+    t += "#8=PRODUCT_DEFINITION_CONTEXT('part definition',#9,'design');\n#9=APPLICATION_CONTEXT('');\n";
+    t += &cube_entities();
+    t += &context(20, "(LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT(.MILLI.,.METRE.))");
+    t += &context(30, "(LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT(.MILLI.,.METRE.))");
+    t += &product(50, "Part");
+    t += &product(70, "Assembly");
+    t += "#60=ADVANCED_BREP_SHAPE_REPRESENTATION('',(#101,#65),#20);\n#61=SHAPE_DEFINITION_REPRESENTATION(#54,#60);\n";
+    t += "#65=AXIS2_PLACEMENT_3D('',#66,$,$);\n#66=CARTESIAN_POINT('',(0.,0.,0.));\n";
+    t += "#80=SHAPE_REPRESENTATION('',(#81),#30);\n#81=AXIS2_PLACEMENT_3D('',#82,$,$);\n#82=CARTESIAN_POINT('',(100.,0.,0.));\n";
+    t += "#88=SHAPE_DEFINITION_REPRESENTATION(#74,#80);\n";
+    for l in 0..=levels {
+        t += &product(1000 + l * 10, &format!("E{l}"));
+        if l < levels {
+            for k in 0..2 {
+                t += &format!("#{}=NEXT_ASSEMBLY_USAGE_OCCURRENCE('','','',#{},#{},$);\n", 2000 + l * 10 + k, 1000 + l * 10, 1000 + (l + 1) * 10);
+            }
+        }
+    }
+    t += "#1900=NEXT_ASSEMBLY_USAGE_OCCURRENCE('e','E','',#70,#1000,$);\n";
+    t += "#9000=NEXT_ASSEMBLY_USAGE_OCCURRENCE('p','Part:1','',#70,#50,$);\n#9001=PRODUCT_DEFINITION_SHAPE('','',#9000);\n";
+    t += "#9002=ITEM_DEFINED_TRANSFORMATION('','',#65,#81);\n";
+    t += "#9003=(REPRESENTATION_RELATIONSHIP('','',#60,#80)REPRESENTATION_RELATIONSHIP_WITH_TRANSFORMATION(#9002)SHAPE_REPRESENTATION_RELATIONSHIP());\n";
+    t += "#9004=CONTEXT_DEPENDENT_SHAPE_REPRESENTATION(#9003,#9001);\n";
+    t += TAIL;
+    t
+}
+
+/// A file past a cap is refused instead of being read part-way. The walk used to stop where the
+/// cap was reached, leave the rest of the tree out, and then read the solids it never reached as
+/// loose geometry: the part below came in unplaced, at the origin, as if the file said so.
+#[test]
+fn assemblies_past_a_cap_are_refused_not_misread() {
+    let imp = step_import(&part_after_doubling_assembly(3)).unwrap();
+    assert_eq!(imp.bodies.len(), 1, "{:?}", imp.warnings);
+    let m = measure(&imp.bodies[0].body).unwrap();
+    assert!(m.bbox.min.dist(Vec3::new(100.0, 0.0, 0.0)) < 1e-6, "placed where the file puts it: {:?}", m.bbox);
+    let err = step_import(&part_after_doubling_assembly(20)).unwrap_err();
+    let msg = err.to_string();
+    assert!(matches!(err, KernelError::TooLarge(_)) && msg.contains("more than 500000"), "{msg}");
 }
 
 #[test]

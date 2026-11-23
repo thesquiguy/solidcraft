@@ -34,13 +34,67 @@ fn body_item(rep: u64, name: &str) -> bool {
     solidcore_step::topology::is_solid_item(name) || tessellated::is_name(name) || (rep == UNLISTED && solidcore_step::topology::is_body_item(name))
 }
 
-/// Deepest assembly nesting followed.
+// Every cap on an assembly below refuses the file when it is exceeded: a reader that stopped
+// part-way through the product structure would leave whole sub-assemblies out, and the solids it
+// never reached would then be read as loose geometry, unplaced at the origin. A file comes in
+// whole or not at all.
+
+/// Deepest assembly (and mapped item) nesting followed.
 pub const MAX_ASSEMBLY_DEPTH: usize = 32;
-/// Most body instances in one import.
-pub const MAX_BODIES: usize = 10_000;
-/// Most product occurrences and mapped representations visited (a shared sub-assembly used
-/// twice at every level would otherwise grow exponentially).
-pub const MAX_VISITS: usize = 100_000;
+/// Most body instances in one import by default. Each instance is a placed copy of its part's
+/// geometry, so memory grows with the count even for the smallest parts: an assembly of 1,000
+/// distinct single-cube parts measures about 100 MB and 0.7 s of CPU, 10,000 about 930 MB and
+/// 8 s, linear in between (#3289). 50,000 instances therefore cost about 5 GB and 40 s before
+/// their parts' own geometry, within a desktop's reach. Machine and cabinet assemblies with every
+/// fastener and terminal placed pass 10,000 (#11526, #17730).
+pub const DEFAULT_MAX_BODIES: usize = 50_000;
+/// The highest the body limit may be raised to ([`set_max_bodies`]: Preferences › General ›
+/// Most bodies in one import, `--max-import-bodies`); also what an import's records read from a
+/// design may hold, so a design made with a raised limit opens anywhere.
+pub const CEILING_BODIES: usize = 500_000;
+/// Most product occurrences and representations the walk visits for a body limit: an occurrence
+/// costs one visit and one per representation it lists, so this leaves room for every body
+/// instance with several representations and sub-assembly levels each (a shared sub-assembly used
+/// twice at every level would otherwise grow exponentially). A visit holds only a node of the
+/// product tree; a file walked to 500,000 visits peaks at about 620 MB, parsing included.
+pub const fn max_visits_for(bodies: usize) -> usize {
+    let visits = bodies.saturating_mul(10);
+    if visits > 500_000 { visits } else { 500_000 }
+}
+/// Most visits at the highest body limit; also what an import's records read from a design may
+/// hold.
+pub const CEILING_VISITS: usize = max_visits_for(CEILING_BODIES);
+/// Most representations one product's shape links together (shape representation relationships,
+/// followed transitively).
+const MAX_LINKED_REPS: usize = 1024;
+
+static PREFERRED_BODIES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(DEFAULT_MAX_BODIES);
+
+/// Read STEP files of up to `bodies` body instances from now on. Refused, changing nothing,
+/// outside [`DEFAULT_MAX_BODIES`]..=[`CEILING_BODIES`].
+pub fn set_max_bodies(bodies: usize) -> std::result::Result<(), String> {
+    if !(DEFAULT_MAX_BODIES..=CEILING_BODIES).contains(&bodies) {
+        return Err(format!("the most bodies in one import must be between {DEFAULT_MAX_BODIES} and {CEILING_BODIES}, not {bodies}"));
+    }
+    PREFERRED_BODIES.store(bodies, std::sync::atomic::Ordering::Relaxed);
+    Ok(())
+}
+
+/// The most body instances a STEP import takes now.
+pub fn max_bodies() -> usize {
+    PREFERRED_BODIES.load(std::sync::atomic::Ordering::Relaxed).clamp(DEFAULT_MAX_BODIES, CEILING_BODIES)
+}
+
+/// The refusal of a file of more than `limit` body instances, with how to raise the limit.
+pub fn too_many_bodies(limit: usize) -> KernelError {
+    KernelError::Failed(if limit < CEILING_BODIES {
+        format!(
+            "the file places more than {limit} bodies, the most one import takes; raise Most bodies in one import in Preferences › General (up to {CEILING_BODIES}), or pass --max-import-bodies to solidcraft-cli"
+        )
+    } else {
+        format!("the file places more than {limit} bodies, the most one import can take")
+    })
+}
 /// Most planned solids converted in one go (bounds the geometry held at once).
 const MAX_WINDOW: usize = 64;
 /// Most representation entries walked while deciding which items are converted exactly once. A
@@ -499,6 +553,14 @@ struct Reader {
     solid_items: usize,
     /// The watch cancelled the import: the walk stops and the import fails.
     cancelled: bool,
+    /// The most body instances and walk visits, as they were when the read began.
+    max_bodies: usize,
+    max_visits: usize,
+    /// The cap the file went past, as the refusal says it: the walk stops and the import fails.
+    over: Option<KernelError>,
+    /// A product linked more than [`MAX_LINKED_REPS`] representations (set where the links are
+    /// followed, which only reads the reader).
+    links_over: std::cell::Cell<bool>,
 }
 
 impl Reader {
@@ -543,12 +605,17 @@ impl Reader {
             watch: None,
             solid_items: 0,
             cancelled: false,
+            max_bodies: max_bodies(),
+            max_visits: max_visits_for(max_bodies()),
+            over: None,
+            links_over: std::cell::Cell::new(false),
         }
     }
 
-    /// Report progress; true once the import is cancelled (the walk then unwinds).
+    /// Report progress; true once the import is cancelled or the file went past a cap (the walk
+    /// then unwinds).
     fn stop(&mut self) -> bool {
-        if self.cancelled {
+        if self.cancelled || self.over.is_some() {
             return true;
         }
         if let Some(w) = &self.watch {
@@ -565,6 +632,33 @@ impl Reader {
     fn refused(&mut self, item: u64, why: &str) {
         let label = self.label(item);
         self.note(IssueKind::Refused, Some(item), 0, format!("{label}: not imported: {why}"));
+    }
+
+    /// The file went past a cap: remember the first one; the walk stops and the import fails.
+    fn exceed(&mut self, refusal: KernelError) {
+        if self.over.is_none() {
+            self.over = Some(refusal);
+        }
+    }
+
+    /// The cap the walk went past, if any, as the error the import fails with.
+    fn refusal(&self) -> Option<KernelError> {
+        self.over.clone().or_else(|| {
+            self.links_over
+                .get()
+                .then(|| KernelError::TooLarge(format!("a STEP product whose shape links more than {MAX_LINKED_REPS} representations")))
+        })
+    }
+
+    /// Count one visit of the walk; false (and the file is refused) past the visit cap.
+    fn visit(&mut self) -> bool {
+        self.visits += 1;
+        if self.visits > self.max_visits {
+            let max = self.max_visits;
+            self.exceed(KernelError::TooLarge(format!("a STEP assembly of more than {max} product occurrences and representations")));
+            return false;
+        }
+        true
     }
 
     /// A warning about the file as a whole.
@@ -901,8 +995,12 @@ impl Reader {
         let mut seen: Vec<u64> = Vec::new();
         let mut stack: Vec<u64> = roots.to_vec();
         while let Some(r) = stack.pop() {
-            if seen.contains(&r) || seen.len() > 1024 {
+            if seen.contains(&r) {
                 continue;
+            }
+            if seen.len() >= MAX_LINKED_REPS {
+                self.links_over.set(true);
+                break;
             }
             seen.push(r);
             if let Some(l) = self.rep_links.get(&r) {
@@ -941,13 +1039,14 @@ impl Reader {
 
     /// Bodies of a representation's items (following mapped items), placed by `m`.
     fn rep_bodies(&mut self, rep: u64, m: &M4, path: &[String], product: &str, instance: Option<&str>, out: &mut Vec<usize>, depth: usize) {
-        if depth > MAX_ASSEMBLY_DEPTH {
-            self.warn("mapped items nested too deeply");
+        if self.stop() {
             return;
         }
-        self.visits += 1;
-        if self.visits > MAX_VISITS {
-            self.warn(format!("more than {MAX_VISITS} component instances: the rest are left out"));
+        if depth > MAX_ASSEMBLY_DEPTH {
+            self.exceed(KernelError::TooLarge(format!("STEP mapped items nested more than {MAX_ASSEMBLY_DEPTH} levels deep")));
+            return;
+        }
+        if !self.visit() {
             return;
         }
         let u = self.units_of(rep);
@@ -962,7 +1061,7 @@ impl Reader {
                     // Only batch consecutive solids: mapped items must retain traversal and
                     // first-use unit/cache order. Bound temporary geometry independently of file size.
                     let mut batch = vec![item];
-                    let capacity = MAX_BODIES.saturating_sub(self.bodies_so_far()).min(64);
+                    let capacity = self.max_bodies.saturating_sub(self.bodies_so_far()).min(64);
                     while batch.len() < capacity && items.peek().is_some_and(|id| self.ex.get(*id).is_some_and(|e| body_item(rep, e.name()))) {
                         if let Some(next) = items.next() {
                             batch.push(next);
@@ -982,8 +1081,8 @@ impl Reader {
                         if !self.node_placed.insert((item, key)) {
                             continue;
                         }
-                        if self.bodies_so_far() >= MAX_BODIES {
-                            self.warn(format!("more than {MAX_BODIES} bodies: the rest are left out"));
+                        if self.bodies_so_far() >= self.max_bodies {
+                            self.exceed(too_many_bodies(self.max_bodies));
                             return;
                         }
                         // The node lists the planned solids (a surface model's closed shells
@@ -1372,13 +1471,17 @@ impl Reader {
         if self.stop() {
             return node;
         }
-        if depth > MAX_ASSEMBLY_DEPTH || stack.contains(&pd) {
-            self.warn("assembly nested too deeply or recursive: some components were left out");
+        // A product that contains itself is a broken file the rest of which can still be read:
+        // the loop is cut where it closes.
+        if stack.contains(&pd) {
+            self.warn("assembly is recursive: a component that contains itself was left out");
             return node;
         }
-        self.visits += 1;
-        if self.visits > MAX_VISITS {
-            self.warn(format!("more than {MAX_VISITS} component instances: the rest are left out"));
+        if depth > MAX_ASSEMBLY_DEPTH {
+            self.exceed(KernelError::TooLarge(format!("a STEP assembly nested more than {MAX_ASSEMBLY_DEPTH} levels deep")));
+            return node;
+        }
+        if !self.visit() {
             return node;
         }
         stack.push(pd);
@@ -1678,6 +1781,11 @@ impl StepReading {
         for pd in roots {
             tree.push(rd.node(pd, identity, identity, &[], None, 0, &mut Vec::new()));
         }
+        // Past a cap the walk stopped part-way: refuse the file before converting anything, and
+        // before the solids it never reached could be taken for loose geometry below.
+        if let Some(e) = rd.refusal() {
+            return Err(e);
+        }
         // Solids outside any product structure (bare geometry files).
         let mut loose: Vec<u64> = rd
             .reps
@@ -1723,6 +1831,9 @@ impl StepReading {
                     children: Vec::new(),
                 });
             }
+        }
+        if let Some(e) = rd.refusal() {
+            return Err(e);
         }
         let single = workers <= 1;
         Ok(StepReading { rd, tree, key, small: text.len() <= KEEP_SMALL_BYTES, single, heal: crate::heals_tolerance_defects() })

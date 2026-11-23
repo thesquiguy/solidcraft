@@ -14,7 +14,7 @@ use std::collections::{HashMap, HashSet};
 use cadmpeg_ir::document::CadIr;
 use cadmpeg_ir::products::{Occurrence, OccurrenceParent, ProductDefinition, PrototypeReference};
 use cadmpeg_ir::transform::Transform;
-use solidcraft_kernel::{IMPORT_MAX_BODIES, IMPORT_MAX_DEPTH, IMPORT_MAX_VISITS, RecordBody, StepNode};
+use solidcraft_kernel::{IMPORT_MAX_DEPTH, RecordBody, StepNode, import_max_bodies, import_max_visits_for};
 
 use super::validation::Origin;
 
@@ -146,12 +146,13 @@ struct Walk<'a, 'w> {
 impl Walk<'_, '_> {
     /// Whether another body fits under the import's limit; says so once when not.
     fn room(&mut self) -> bool {
-        if self.bodies.len() < IMPORT_MAX_BODIES {
+        let max = import_max_bodies();
+        if self.bodies.len() < max {
             return true;
         }
         if !self.full {
             self.full = true;
-            self.warnings.push(format!("more than {IMPORT_MAX_BODIES} bodies: the rest are left out"));
+            self.warnings.push(format!("more than {max} bodies: the rest are left out"));
         }
         false
     }
@@ -172,9 +173,10 @@ impl Walk<'_, '_> {
             return node;
         }
         self.visits += 1;
-        if self.visits > IMPORT_MAX_VISITS {
-            if self.visits == IMPORT_MAX_VISITS + 1 {
-                self.warnings.push(format!("more than {IMPORT_MAX_VISITS} component instances: the rest are left out"));
+        let max_visits = import_max_visits_for(import_max_bodies());
+        if self.visits > max_visits {
+            if self.visits == max_visits + 1 {
+                self.warnings.push(format!("more than {max_visits} component instances: the rest are left out"));
             }
             return node;
         }

@@ -89,8 +89,9 @@ pub struct RecordMesh {
     pub triangles: Vec<[u32; 3]>,
 }
 
-/// [`ImportRecords::bodies`] as read, refused at the first body past [`super::MAX_BODIES`], which
-/// [`records_import`] refuses in any case. A body takes a dozen bytes of text and over 500 in
+/// [`ImportRecords::bodies`] as read, refused at the first body past [`super::CEILING_BODIES`],
+/// which [`records_import`] refuses in any case. The ceiling, not the limit in force, so a design
+/// whose import was read with a raised limit opens anywhere. A body takes a dozen bytes of text and over 500 in
 /// memory, so records of millions of tiny bodies, small once compressed in a design, would
 /// otherwise take tens of gigabytes before any check ran. Only this list is bounded as it is read.
 /// The other lists of records cost what parsing their JSON costs.
@@ -99,13 +100,13 @@ fn bounded_bodies<'de, D: serde::Deserializer<'de>>(deserializer: D) -> std::res
     impl<'de> serde::de::Visitor<'de> for Bodies {
         type Value = Vec<RecordBody>;
         fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(f, "a list of at most {} bodies", super::MAX_BODIES)
+            write!(f, "a list of at most {} bodies", super::CEILING_BODIES)
         }
         fn visit_seq<A: serde::de::SeqAccess<'de>>(self, mut seq: A) -> std::result::Result<Vec<RecordBody>, A::Error> {
             let mut bodies = Vec::new();
             while let Some(body) = seq.next_element::<RecordBody>()? {
-                if bodies.len() == super::MAX_BODIES {
-                    return Err(serde::de::Error::custom(format!("an import of more than {} bodies", super::MAX_BODIES)));
+                if bodies.len() == super::CEILING_BODIES {
+                    return Err(serde::de::Error::custom(format!("an import of more than {} bodies", super::CEILING_BODIES)));
                 }
                 bodies.push(body);
             }
@@ -134,10 +135,10 @@ pub fn import_trims() -> &'static (dyn solidcore_ops::pcurve::Trims + Sync) {
 /// gives, so a design uses either the same way.
 pub fn records_import(records: &ImportRecords) -> Result<StepImport> {
     let _span = solidcraft_profile::span("import", "records.import");
-    if records.bodies.len() > super::MAX_BODIES {
-        return Err(KernelError::Invalid(format!("an import of {} bodies (at most {})", records.bodies.len(), super::MAX_BODIES)));
+    if records.bodies.len() > super::CEILING_BODIES {
+        return Err(KernelError::Invalid(format!("an import of {} bodies (at most {})", records.bodies.len(), super::CEILING_BODIES)));
     }
-    check_tree(&records.tree, records.bodies.len(), 0, &mut 0)?;
+    check_tree(&records.tree, records.bodies.len(), 0, &mut 0, super::CEILING_VISITS)?;
     let mut bodies = Vec::with_capacity(records.bodies.len());
     // A part placed again is one part: its copies are not counted again. One root product: the
     // first name of every issue's path is the import's own component.
@@ -439,16 +440,16 @@ fn finite_placement(r: &RecordBody) -> std::result::Result<(), String> {
 }
 
 /// Every node's bodies index one of `count` bodies, and the tree is no deeper and has no more
-/// nodes ([`super::MAX_VISITS`], counted in `visits` over every root) than an assembly the STEP
-/// reader reads.
-fn check_tree(nodes: &[StepNode], count: usize, depth: usize, visits: &mut usize) -> Result<()> {
+/// nodes (`max_visits`, [`super::CEILING_VISITS`] for an import, counted in `visits` over every
+/// root) than an assembly the STEP reader reads.
+fn check_tree(nodes: &[StepNode], count: usize, depth: usize, visits: &mut usize, max_visits: usize) -> Result<()> {
     if depth > super::MAX_ASSEMBLY_DEPTH {
         return Err(KernelError::Invalid("an import's product tree nested too deeply".into()));
     }
     for n in nodes {
         *visits += 1;
-        if *visits > super::MAX_VISITS {
-            return Err(KernelError::Invalid(format!("an import's product tree of more than {} products", super::MAX_VISITS)));
+        if *visits > max_visits {
+            return Err(KernelError::Invalid(format!("an import's product tree of more than {max_visits} products")));
         }
         if n.bodies.iter().any(|b| *b >= count) {
             return Err(KernelError::Invalid(format!("product `{}` names a body the import does not have", n.name)));
@@ -456,7 +457,7 @@ fn check_tree(nodes: &[StepNode], count: usize, depth: usize, visits: &mut usize
         if n.transform.iter().flatten().any(|x| !x.is_finite()) {
             return Err(KernelError::Invalid(format!("product `{}` has a placement that is not finite", n.name)));
         }
-        check_tree(&n.children, count, depth + 1, visits)?;
+        check_tree(&n.children, count, depth + 1, visits, max_visits)?;
     }
     Ok(())
 }

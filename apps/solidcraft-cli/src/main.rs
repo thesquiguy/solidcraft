@@ -33,6 +33,7 @@
 //! --keep-plugin-approvals (local sessions only)               keep plugin approvals between runs, in the plugins folder's grant store
 //! --debug (with any command)                                  SolidCraft's debug log on stderr (or RUST_LOG=LEVEL)
 //! --max-file-size SIZE (with any command)                     read STEP and design files up to SIZE (2GB, 1500MB; at most 16GB)
+//! --max-import-bodies N (with any command)                    read STEP files placing up to N bodies (default 50000; at most 500000)
 //! ```
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 #![forbid(unsafe_code)]
@@ -139,7 +140,7 @@ const USAGE_BENCH_EDIT: &str = "  solidcraft-cli bench-edit <script.json|recipe.
 /// `save-stress`'s lines in the usage: the file saved over and over.
 const USAGE_SAVE_STRESS: &str = "  solidcraft-cli save-stress <path> <rounds>\n";
 /// The flags every command takes, at the end of the top-level usage.
-const USAGE_DEBUG: &str = "  --debug, with any command: what SolidCraft logs (why a body has no display plan, why a save left its\n      model cache out), on stderr; RUST_LOG=error|warn|info|debug|trace sets one level for every crate\n  --max-file-size SIZE, with any command: read STEP and import files and design files up to SIZE for this run\n      (for example 2GB or 1500MB; at most 16GB; the defaults are 512 MB and 256 MB, and a smaller SIZE keeps them)\n";
+const USAGE_DEBUG: &str = "  --debug, with any command: what SolidCraft logs (why a body has no display plan, why a save left its\n      model cache out), on stderr; RUST_LOG=error|warn|info|debug|trace sets one level for every crate\n  --max-file-size SIZE, with any command: read STEP and import files and design files up to SIZE for this run\n      (for example 2GB or 1500MB; at most 16GB; the defaults are 512 MB and 256 MB, and a smaller SIZE keeps them)\n  --max-import-bodies N, with any command: read STEP files that place up to N bodies for this run\n      (the default is 50000, at most 500000; a file that places more is refused)\n";
 
 const USAGE_PLUGIN_LIMITS: &str = "  --plugin-limits FILE.json, with local commands: user ceilings {max_fuel, max_memory_mib}; defaults 100000000000 / 128, invocation defaults remain 10000000 / 64 MiB. With mcp use --headless; connected desktops keep their own preferences.\n";
 
@@ -195,6 +196,10 @@ fn main() -> ExitCode {
         }
     };
     if let Err(e) = max_file_size(&mut args) {
+        solidcraft_engine::note!("error: {e}");
+        return ExitCode::FAILURE;
+    }
+    if let Err(e) = max_import_bodies(&mut args) {
         solidcraft_engine::note!("error: {e}");
         return ExitCode::FAILURE;
     }
@@ -304,6 +309,30 @@ fn max_file_size(args: &mut Vec<String>) -> Result<(), String> {
     let Some(size) = size else { return Ok(()) };
     let bytes = solidcraft_engine::io::limits::parse_flag(&size).map_err(|e| format!("--max-file-size: {e}"))?;
     solidcraft_engine::io::limits::set_override(Some(bytes))
+}
+
+/// Take `--max-import-bodies N` (or `--max-import-bodies=N`), which any command takes, out of the
+/// arguments and raise the most bodies one STEP import takes for this run (#17730). A bad count
+/// is an error.
+fn max_import_bodies(args: &mut Vec<String>) -> Result<(), String> {
+    let mut count = None;
+    let mut i = 0;
+    while let Some(arg) = args.get(i) {
+        if arg == "--max-import-bodies" {
+            let value = args.get(i + 1).cloned().ok_or("--max-import-bodies needs a count, for example --max-import-bodies 200000")?;
+            args.drain(i..i + 2);
+            count = Some(value);
+        } else if let Some(value) = arg.strip_prefix("--max-import-bodies=") {
+            count = Some(value.to_string());
+            args.remove(i);
+        } else {
+            i += 1;
+        }
+    }
+    let Some(count) = count else { return Ok(()) };
+    let bodies =
+        count.trim().replace(['_', ','], "").parse::<usize>().map_err(|_| format!("--max-import-bodies: `{count}` is not a count of bodies"))?;
+    solidcraft_engine::kernel::set_import_max_bodies(bodies).map_err(|e| format!("--max-import-bodies: {e}"))
 }
 
 /// Explicit host policy for local sessions only. A script or package cannot change this.

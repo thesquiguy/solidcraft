@@ -1,0 +1,42 @@
+{
+  "en": {
+    "prefs.max_import_bodies": "Most bodies in one import",
+    "prefs.max_import_bodies_note": "The most bodies one STEP import places: 50000 by default, at most 500000. A file that places more is refused, never read in part. Each body takes memory: 50000 small parts need about 5 GB.",
+    "prefs.max_import_bodies_unit": "bodies"
+  },
+  "ar": {
+    "prefs.max_import_bodies": "أكبر عدد من الأجسام في استيراد واحد",
+    "prefs.max_import_bodies_note": "أكبر عدد من الأجسام يضعها استيراد STEP واحد: 50000 افتراضيًا، و500000 على الأكثر. يُرفض الملف الذي يضع أكثر من ذلك، ولا يُقرأ جزء منه أبدًا. كل جسم يأخذ ذاكرة: 50000 قطعة صغيرة تحتاج نحو 5 GB.",
+    "prefs.max_import_bodies_unit": "أجسام"
+  },
+  "de": {
+    "prefs.max_import_bodies": "Höchstzahl Körper pro Import",
+    "prefs.max_import_bodies_note": "Die meisten Körper, die ein STEP-Import platziert: standardmäßig 50000, höchstens 500000. Eine Datei mit mehr wird abgelehnt, nie teilweise gelesen. Jeder Körper braucht Speicher: 50000 kleine Teile brauchen etwa 5 GB.",
+    "prefs.max_import_bodies_unit": "Körper"
+  },
+  "he": {
+    "prefs.max_import_bodies": "מרב הגופים בייבוא אחד",
+    "prefs.max_import_bodies_note": "מרב הגופים שייבוא STEP אחד ממקם: 50000 כברירת מחדל, ועד 500000. קובץ שממקם יותר נדחה, ולעולם אינו נקרא בחלקו. כל גוף תופס זיכרון: 50000 חלקים קטנים צריכים כ-5 GB.",
+    "prefs.max_import_bodies_unit": "גופים"
+  },
+  "ja": {
+    "prefs.max_import_bodies": "1回のインポートの最大ボディ数",
+    "prefs.max_import_bodies_note": "1回のSTEPインポートで配置される最大ボディ数：既定は50000、最大500000。これを超えるファイルは拒否され、一部だけ読み込まれることはありません。ボディごとにメモリを使います。小さな部品50000個で約5 GBが必要です。",
+    "prefs.max_import_bodies_unit": "ボディ"
+  },
+  "ko": {
+    "prefs.max_import_bodies": "한 번 가져오기의 최대 바디 수",
+    "prefs.max_import_bodies_note": "STEP 가져오기 한 번에 배치되는 최대 바디 수: 기본값 50000, 최대 500000. 그보다 많이 배치하는 파일은 거부되며 일부만 읽히지 않습니다. 바디마다 메모리를 사용합니다. 작은 부품 50000개에 약 5 GB가 필요합니다.",
+    "prefs.max_import_bodies_unit": "바디"
+  },
+  "vi": {
+    "prefs.max_import_bodies": "Số thân nhiều nhất trong một lần nhập",
+    "prefs.max_import_bodies_note": "Số thân nhiều nhất mà một lần nhập STEP đặt vào: mặc định 50000, tối đa 500000. Tệp đặt nhiều hơn sẽ bị từ chối, không bao giờ đọc một phần. Mỗi thân chiếm bộ nhớ: 50000 chi tiết nhỏ cần khoảng 5 GB.",
+    "prefs.max_import_bodies_unit": "thân"
+  },
+  "zh": {
+    "prefs.max_import_bodies": "单次导入的最多实体数",
+    "prefs.max_import_bodies_note": "单次 STEP 导入放置的最多实体数：默认 50000，最多 500000。放置更多实体的文件会被拒绝，绝不会只读取一部分。每个实体都占用内存：50000 个小零件约需 5 GB。",
+    "prefs.max_import_bodies_unit": "个实体"
+  }
+}

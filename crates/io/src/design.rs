@@ -66,8 +66,9 @@ const MAX_PREVIEW_BYTES: usize = 8 << 20;
 const MAX_PREVIEW_TRIANGLES: usize = 100_000;
 /// The most bodies the import records parts of one design may hold together. A part is counted
 /// once however many imports name it, since they share what it holds ([`RecordsParts`]). An import
-/// holds at most [`solidcraft_kernel::IMPORT_MAX_BODIES`] (10,000), so this is a hundred imports
-/// of the most bodies one can have, far more than any design keeps. A body takes about 512 bytes
+/// holds at most [`solidcraft_kernel::IMPORT_DEFAULT_MAX_BODIES`] (50,000) unless the limit was
+/// raised, and never more than [`solidcraft_kernel::IMPORT_CEILING_BODIES`] (500,000), so this is
+/// twenty imports of the most bodies one has by default, or two at the highest limit. A body takes about 512 bytes
 /// in memory, so the bodies of a design's records parts stay near 512 MB, and the bodies of one
 /// part more (5 MB) while it is refused. Records written inline in `document.json` are not counted
 /// here, as they are read with it. Without this bound, some 6,000 different parts of 10,000 tiny
@@ -2875,7 +2876,7 @@ mod tests {
     /// they always did.
     #[test]
     fn import_records_of_more_bodies_than_an_import_makes_are_refused_as_they_are_read() {
-        let max = solidcraft_kernel::IMPORT_MAX_BODIES;
+        let max = solidcraft_kernel::IMPORT_CEILING_BODIES;
         // The records of `count` tiny bodies and the parts of a design whose import keeps them,
         // with the name and text of its records part.
         let design = |count: usize, newer: bool| {
@@ -2956,7 +2957,7 @@ mod tests {
     /// build's.
     #[test]
     fn imports_naming_one_records_part_share_one_reading_of_it() {
-        let max = solidcraft_kernel::IMPORT_MAX_BODIES;
+        let max = solidcraft_kernel::IMPORT_CEILING_BODIES;
         let count = MAX_RECORD_BODIES / max + 1;
         let records = Arc::new(tiny_records(max, ""));
         let mut doc = Document::new("Records");

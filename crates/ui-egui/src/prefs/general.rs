@@ -106,6 +106,7 @@ pub(super) fn show(app: &mut SolveApp, ui: &mut egui::Ui) {
         });
         ui_kit::settings_section(ui, "files", app.tr("FILES"), |ui| {
             file_size_rows(app, ui, labels);
+            import_bodies_row(app, ui, labels);
             ui.horizontal(|ui| {
                 let width = (ui.available_width() - t.space_16 - ui.spacing().item_spacing.x).max(0.0);
                 ui.allocate_ui_with_layout(egui::vec2(width, t.control_height), egui::Layout::left_to_right(egui::Align::Center), |ui| {
@@ -281,6 +282,31 @@ fn file_size_rows(app: &mut SolveApp, ui: &mut egui::Ui, labels: f32) {
                     },
                 );
             }
+        });
+    });
+}
+
+/// Preferences › General › Most bodies in one import (#17730): an assembly with every fastener
+/// and terminal placed passes the default. The browser keeps the default, so there is no row.
+fn import_bodies_row(app: &mut SolveApp, ui: &mut egui::Ui, labels: f32) {
+    use solidcraft_engine::kernel::{IMPORT_CEILING_BODIES, IMPORT_DEFAULT_MAX_BODIES};
+    if !solidcraft_engine::io::limits::ADJUSTABLE {
+        return;
+    }
+    let label = app.tr("prefs.max_import_bodies").to_string();
+    let unit = app.tr("prefs.max_import_bodies_unit").to_string();
+    ui_kit::settings_block_hint(ui, &label, app.tr("prefs.max_import_bodies_note"), labels, |ui| {
+        ui.horizontal(|ui| {
+            let t = Tokens::get();
+            ui.spacing_mut().item_spacing.x = t.space_4;
+            let field = ui
+                .scope(|ui| {
+                    ui.spacing_mut().interact_size.x = t.space_24 * 3.0;
+                    ui_kit::number_field(ui, &mut app.preferences.max_import_bodies, IMPORT_DEFAULT_MAX_BODIES..=IMPORT_CEILING_BODIES, 1000.0, "")
+                })
+                .inner;
+            crate::scenario::publish_rect("prefs:max_import_bodies", field.rect);
+            ui_kit::settings_inline_note(ui, &unit);
         });
     });
 }
