@@ -603,6 +603,21 @@ are kept, not deleted.
 - **For translators:** "history" is the undo history, not the timeline. French had three names
   for this marker while English did.
 
+### section only
+
+A Section Analysis that shows only its cut face, with no depth, and hides the rest of every body.
+
+The cut face shows on the section's first plane on show, from both sides, trimmed by the other
+planes. It turns off with the section and changes no geometry.
+
+- **In SolidCraft:** `inspect.section_only` (`on`); the Session's `section_only`; the Section Only
+  button, its Alt+S key, and the Section Only item of a cut face's menu and a section plane's row.
+- **Don't use:** Slice (the Sketch Palette's switch that cuts the view at the sketch plane),
+  cross-section (a drawing's view), section view.
+- **Elsewhere:** zero-thickness section, slice view.
+- **For translators:** a way of showing a Section Analysis, not a Split Body and not the
+  Sketch Palette's Slice.
+
 ### section plane
 
 A plane of a Section Analysis; the view hides what lies beyond any section plane.
@@ -671,21 +686,6 @@ A point or a curve in a sketch.
 - **Don't use:** geometry (for sketch content), element, object.
 - **Elsewhere:** sketch entity, sketch geometry, sketch element.
 - **For translators:** "entity" names both points and curves.
-
-### slice only
-
-A Section Analysis that shows only its cut face, with no depth, and hides the rest of every body.
-
-The cut face shows on the section's first plane on show, from both sides, trimmed by the other
-planes. It turns off with the section and changes no geometry.
-
-- **In SolidCraft:** `inspect.section_slice` (`on`); the Session's `section_slice`; the Slice Only
-  button, its Alt+S key, and the Slice Only item of a cut face's menu and a section plane's row.
-- **Don't use:** Slice (the Sketch Palette's switch that cuts the view at the sketch plane),
-  cross-section (a drawing's view), section view.
-- **Elsewhere:** zero-thickness section, section only, slice view.
-- **For translators:** a way of showing a Section Analysis, not a Split Body and not the
-  Sketch Palette's Slice.
 
 ### standard part
 

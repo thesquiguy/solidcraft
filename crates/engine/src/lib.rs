@@ -538,7 +538,7 @@ pub struct SectionState {
     pub hidden: Vec<SectionPlane>,
     pub hatch: bool,
     pub folder: Option<Vec<u64>>,
-    pub slice: bool,
+    pub only: bool,
 }
 
 /// A joint drag's frame, drawn before the drag applies it (#6325): the transforms (in their
@@ -992,9 +992,9 @@ pub struct Session {
     pub section_folder: Option<Vec<u64>>,
     /// Whether the section's cut faces are hatched (`inspect.section`'s `hatch`; on by default).
     pub section_hatch: bool,
-    /// Slice Only (`inspect.section_slice`): the section shows only its cut face on its first
+    /// Section Only (`inspect.section_only`): the section shows only its cut face on its first
     /// plane on show, and hides the rest of every body. Off when the section turns off.
-    pub section_slice: bool,
+    pub section_only: bool,
     /// Component identification colours are enabled when present; view state only.
     pub colored_components: Option<()>,
     /// Surface analysis shading the model (zebra, draft, curvature map).
@@ -1152,14 +1152,14 @@ impl Session {
             hidden: self.section_hidden.clone(),
             hatch: self.section_hatch,
             folder: self.section_folder.clone(),
-            slice: self.section_slice,
+            only: self.section_only,
         }
     }
 
     pub fn set_section_state(&mut self, state: SectionState) {
         let was_on = !self.section.is_empty();
-        (self.section, self.section_hidden, self.section_hatch, self.section_folder, self.section_slice) =
-            (state.planes, state.hidden, state.hatch, state.folder, state.slice);
+        (self.section, self.section_hidden, self.section_hatch, self.section_folder, self.section_only) =
+            (state.planes, state.hidden, state.hatch, state.folder, state.only);
         self.status_slot(crate::status_items::StatusId::Section, !self.section.is_empty());
         if !was_on && !self.section.is_empty() {
             self.status_activated(crate::status_items::StatusId::Section);
@@ -1260,8 +1260,8 @@ impl Session {
         self.colored_components = state.colored_components;
         // Passive view swaps restore the complete cut without publishing a display edit or
         // changing the shared window's status ordering on every tile paint.
-        let SectionState { planes, hidden, hatch, folder, slice } = state.section;
-        (self.section, self.section_hidden, self.section_hatch, self.section_folder, self.section_slice) = (planes, hidden, hatch, folder, slice);
+        let SectionState { planes, hidden, hatch, folder, only } = state.section;
+        (self.section, self.section_hidden, self.section_hatch, self.section_folder, self.section_only) = (planes, hidden, hatch, folder, only);
         self.analysis = state.analysis;
         // Requested analysis survives an edit; sampled world geometry does not.
         self.continuity = if current { state.continuity } else { Vec::new() };
@@ -1455,7 +1455,7 @@ impl Session {
             section_hidden: Vec::new(),
             section_folder: None,
             section_hatch: true,
-            section_slice: false,
+            section_only: false,
             colored_components: None,
             analysis: None,
             continuity: Vec::new(),
@@ -3396,7 +3396,7 @@ impl Session {
             section_hidden: Vec::new(),
             section_folder: None,
             section_hatch: true,
-            section_slice: false,
+            section_only: false,
             colored_components: None,
             analysis: None,
             continuity: Vec::new(),

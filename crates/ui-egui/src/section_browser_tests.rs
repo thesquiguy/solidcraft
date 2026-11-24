@@ -845,24 +845,24 @@ fn hiding_a_plane_leaves_the_others_hatch() {
     assert_eq!(scene.clip_hatch, [1]);
 }
 
-/// Slice Only from a cut face's menu: the section then shows only its cut face, which still
+/// Section Only from a cut face's menu: the section then shows only its cut face, which still
 /// gives the cut face's menu, and the same item turns it off. A plane's row menu has it too.
 #[test]
-fn slice_only_from_the_cut_face_and_the_plane_row() {
+fn section_only_from_the_cut_face_and_the_plane_row() {
     let mut h = box_in_view();
     h.app.run("inspect.section", json!({"plane": {"origin": [0, 15, 0], "normal": [0, -1, 0]}})).unwrap();
     h.frames(3);
-    assert_eq!(crate::keymap::display_for(&h.app, "inspect.section_slice").as_deref(), Some("Alt+S"));
+    assert_eq!(crate::keymap::display_for(&h.app, "inspect.section_only").as_deref(), Some("Alt+S"));
     let labels = menu_at(&mut h, [20.0, 15.0, 10.0]);
-    assert!(labels.iter().any(|l| l == "Slice Only"), "the cut face's menu: {labels:?}");
-    pick(&mut h, "Slice Only");
-    assert!(h.app.session.section_slice);
+    assert!(labels.iter().any(|l| l == "Section Only"), "the cut face's menu: {labels:?}");
+    pick(&mut h, "Section Only");
+    assert!(h.app.session.section_only);
     assert_eq!(crate::viewport::section_planes(&h.app).len(), 2, "the plane and the slab's back");
     h.frames(3);
     let labels = menu_at(&mut h, [20.0, 15.0, 10.0]);
     assert!(labels.iter().any(|l| l == "Turn Off Section View"), "the slice is still the cut face: {labels:?}");
-    pick(&mut h, "Slice Only");
-    assert!(!h.app.session.section_slice);
-    menu(&mut h, 1, "Slice Only");
-    assert!(h.app.session.section_slice, "from the plane's row");
+    pick(&mut h, "Section Only");
+    assert!(!h.app.session.section_only);
+    menu(&mut h, 1, "Section Only");
+    assert!(h.app.session.section_only, "from the plane's row");
 }

@@ -72,16 +72,16 @@ pub struct SectionPlaneState {
     pub normal: [f64; 3],
     pub hidden: bool,
 }
-/// What `inspect.section_slice` takes.
+/// What `inspect.section_only` takes.
 #[derive(Debug, Deserialize, JsonSchema)]
 #[schemars(deny_unknown_fields)]
-pub struct SliceParams {
+pub struct SectionOnlyParams {
     /// true shows only the cut face, false the whole cut model; left out, it turns over.
     pub on: Option<bool>,
 }
-/// `inspect.section_slice` return.
+/// `inspect.section_only` return.
 #[derive(Serialize, JsonSchema)]
-pub struct SliceResult {
+pub struct SectionOnlyResult {
     /// Whether the section now shows only its cut face.
-    pub slice: bool,
+    pub on: bool,
 }

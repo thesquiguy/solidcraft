@@ -5398,7 +5398,7 @@ pub fn active_view(app: &SolveApp) -> solidcraft_engine::sketch::SketchView {
 }
 
 /// The section cut shown now, its planes: the open Section Analysis dialog's preview, else the
-/// session's (or a sketch's Slice). With Slice Only on, a section shows only its cut face
+/// session's (or a sketch's Slice). With Section Only on, a section shows only its cut face
 /// (`solidcraft_engine::view::shown_section`); a sketch's Slice stays as it is.
 pub fn section_planes(app: &SolveApp) -> Vec<SectionPlane> {
     let dialog = app.dialog.as_ref().filter(|d| matches!(d.kind, crate::dialogs::Kind::Section { .. }));
@@ -5407,10 +5407,10 @@ pub fn section_planes(app: &SolveApp) -> Vec<SectionPlane> {
     {
         return vec![SectionPlane { id: 0, origin, normal }];
     }
-    solidcraft_engine::view::shown_section(&section_cut(app, dialog), app.session.section_slice)
+    solidcraft_engine::view::shown_section(&section_cut(app, dialog), app.session.section_only)
 }
 
-/// The section's own planes, before Slice Only: the open Section Analysis dialog's preview
+/// The section's own planes, before Section Only: the open Section Analysis dialog's preview
 /// (`dialog`), else the session's.
 fn section_cut(app: &SolveApp, dialog: Option<&crate::dialogs::Dialog>) -> Vec<SectionPlane> {
     let Some(d) = dialog else { return app.session.section.clone() };
