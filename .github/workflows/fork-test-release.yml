@@ -1,0 +1,50 @@
+# Test branch only, never for upstream: publish finished fork test builds as a prerelease, so they
+# download without a GitHub sign-in (Actions artifacts need one).
+name: Fork test release
+
+on:
+  workflow_dispatch:
+    inputs:
+      windows_run:
+        description: "Run id holding the Windows artifact"
+        type: string
+      macos_run:
+        description: "Run id holding the macOS artifact"
+        type: string
+      tag:
+        description: "Release tag"
+        type: string
+        default: test-step-import-body-limit
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  release:
+    if: github.repository_owner != 'tangency-labs'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: solidcraft-pink-test-windows-portable
+          run-id: ${{ inputs.windows_run }}
+          github-token: ${{ github.token }}
+          path: out
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: solidcraft-pink-test-macos-dmg
+          run-id: ${{ inputs.macos_run }}
+          github-token: ${{ github.token }}
+          path: out
+      - name: Publish prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          ls -la out
+          gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+          gh release create "$TAG" out/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+            --title "Pink test build: STEP imports of up to 50,000+ bodies" \
+            --notes "Unsigned test build of the step-import-body-limit branch, with a pink icon. Not an official SolidCraft release. Windows: unzip and run solidcraft.exe (SmartScreen: More info > Run anyway). Mac (Apple Silicon): open the dmg, drag to Applications, then right-click > Open the first time. Raise the limit in Preferences > General > Most bodies in one import."
