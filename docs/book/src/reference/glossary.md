@@ -614,6 +614,21 @@ to each other keep a quarter, three an eighth. A section has at most six.
 - **For translators:** a view-only cut that changes no geometry, not a Split Body or a Plane
   feature.
 
+### see-through
+
+A body drawn faint for a while, so what lies behind it shows and takes the clicks, with its colour
+and appearance left as they are.
+
+Making a body see-through changes no part of the design: nothing is saved, it is no undo step, and
+it lasts until the design is closed or Clear See-Through makes every body solid again.
+
+- **In SolidCraft:** `view.see_through` (`bodies`, `paths`, `on`), `view.clear_see_through`; the
+  See-Through and Clear See-Through menu rows.
+- **Don't use:** transparent, translucent, ghosted (for this view state).
+- **Elsewhere:** make transparent, change transparency, opacity control.
+- **For translators:** a view state that changes no appearance, not an appearance's opacity or a
+  glass material.
+
 ### settings profile
 
 A named set of input and interface preferences that can be switched, exported and imported as

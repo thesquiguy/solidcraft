@@ -498,3 +498,39 @@ fn point_cloud_points_pick_in_view_pick_viewport_and_construct_tools() {
     assert_eq!(list[0]["body"], "Cover", "{r}");
     assert_eq!(list[1]["cloud"], 1, "{r}");
 }
+
+/// See-Through (#16384): a pick goes through a see-through body to the body behind it, by the
+/// selection's key (Shift+T) and back again; Clear See-Through's key makes every body solid again.
+#[test]
+fn a_pick_goes_through_a_see_through_body() {
+    let mut h = Harness::new();
+    for p in [
+        json!({"length": 10, "width": 10, "height": 10, "body_name": "Bottom"}),
+        json!({"length": 10, "width": 10, "height": 10, "corner": [0, 0, 20], "operation": "new", "body_name": "Top"}),
+    ] {
+        h.app.run("solid.box", p).unwrap();
+    }
+    let down = json!({"rays": [{"origin": [5, 5, 100], "dir": [0, 0, -1]}]});
+    let hit = |h: &mut Harness| pick(h, down.clone())["hits"][0]["body"].as_str().map(str::to_string);
+    assert_eq!(hit(&mut h).as_deref(), Some("Top"));
+    h.app.run("select.set", json!({"items": [{"type": "body", "name": "Top"}]})).unwrap();
+    crate::keymap::press(&mut h.app, "Shift+T", false);
+    assert_eq!(hit(&mut h).as_deref(), Some("Bottom"), "the click goes through Top");
+    crate::keymap::press(&mut h.app, "Shift+T", false);
+    assert_eq!(hit(&mut h).as_deref(), Some("Top"), "pressed again, Top is solid");
+    h.app.run("view.see_through", json!({"bodies": ["Top", "Bottom"]})).unwrap();
+    assert_eq!(hit(&mut h), None, "both see-through: nothing stops the ray");
+    crate::keymap::press(&mut h.app, "Alt+Shift+T", false);
+    assert!(h.app.session.see_through.is_empty());
+    assert_eq!(hit(&mut h).as_deref(), Some("Top"));
+}
+
+/// See-Through's key with nothing selected says what to select, and changes nothing.
+#[test]
+fn see_through_with_nothing_selected_says_what_to_select() {
+    let mut h = top_view();
+    crate::keymap::press(&mut h.app, "Shift+T", false);
+    assert!(h.app.session.see_through.is_empty());
+    let status = h.app.status.as_ref().map(|(text, _, error)| (text.clone(), *error));
+    assert_eq!(status, Some(("See-Through: select bodies or components first".to_string(), true)));
+}

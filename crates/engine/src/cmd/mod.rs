@@ -198,6 +198,7 @@ mod point_cloud;
 mod point_cloud_deviation;
 mod script;
 mod section;
+mod see_through;
 mod selection;
 pub mod settings;
 pub(crate) use clipboard::component_path_form;
@@ -670,6 +671,7 @@ pub fn command_specs() -> Vec<&'static CommandSpec> {
     v.extend(libraries::COMMANDS.iter());
     v.extend(section::COMMANDS.iter());
     v.extend(view_navigation::COMMANDS.iter());
+    v.extend(see_through::COMMANDS.iter());
     v.extend(tab_layouts::COMMANDS.iter());
     v.extend(tab_views::COMMANDS.iter());
     v.extend(documents::COMMANDS.iter());

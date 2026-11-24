@@ -1010,6 +1010,10 @@ pub struct Session {
     /// The curvature combs `inspect.curvature_comb` shows, for the viewport to draw; `None` when
     /// the analysis is off. View state: not part of the design and not an undo step.
     pub comb: Option<CombView>,
+    /// Bodies drawn see-through for a while, by name (`view.see_through`): their colours and
+    /// appearances stay as they are, and clicks go through them to what lies behind. View state:
+    /// not part of the design, not an undo step, and gone when the design is closed.
+    pub see_through: std::collections::BTreeSet<String>,
     /// Oldest active slot first; replacing an effect retains its row position.
     status_order: Vec<status_items::StatusId>,
     /// Successful source activations, independently of row order and sharing policy.
@@ -1459,6 +1463,7 @@ impl Session {
             continuity: Vec::new(),
             isocurves: Vec::new(),
             comb: None,
+            see_through: Default::default(),
             status_order: Vec::new(),
             status_activation: Vec::new(),
             single_surface_analysis: true,
@@ -3436,6 +3441,7 @@ impl Session {
             continuity: Vec::new(),
             isocurves: Vec::new(),
             comb: None,
+            see_through: self.see_through.clone(),
             status_order: Vec::new(),
             status_activation: Vec::new(),
             single_surface_analysis: self.single_surface_analysis,
