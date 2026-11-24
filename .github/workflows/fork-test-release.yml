@@ -4,7 +4,7 @@ name: Fork test release
 
 on:
   push:
-    tags: ["test-release-*"]
+    branches: ["test-release/**"]
 
 env:
   WINDOWS_RUN: "45160051889"
