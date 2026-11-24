@@ -1,0 +1,42 @@
+{
+  "en": {
+    "Section Only": "Section Only",
+    "cmd.inspect_section_only": "Section Only",
+    "help.inspect.section_only": "Shows only the cut face of a Section Analysis, a slice with no depth, and hides the rest of every body. Use it to read a cross-section's profile without the model behind it."
+  },
+  "ar": {
+    "Section Only": "المقطع فقط",
+    "cmd.inspect_section_only": "المقطع فقط",
+    "help.inspect.section_only": "يعرض الوجه المقطوع فقط من تحليل المقطع، شريحة بلا عمق، ويخفي باقي كل جسم. استخدمه لقراءة شكل المقطع العرضي دون النموذج خلفه."
+  },
+  "de": {
+    "Section Only": "Nur Schnitt",
+    "cmd.inspect_section_only": "Nur Schnitt",
+    "help.inspect.section_only": "Zeigt nur die Schnittfläche einer Schnittanalyse, eine Scheibe ohne Tiefe, und blendet den Rest jedes Körpers aus. Damit lesen Sie das Profil eines Querschnitts ohne das Modell dahinter."
+  },
+  "he": {
+    "Section Only": "חתך בלבד",
+    "cmd.inspect_section_only": "חתך בלבד",
+    "help.inspect.section_only": "הצגת הפאה החתוכה בלבד של ניתוח חתך, פרוסה ללא עומק, והסתרת שאר כל גוף. מתאים לקריאת הפרופיל של חתך רוחב בלי המודל שמאחוריו."
+  },
+  "ja": {
+    "Section Only": "断面のみ",
+    "cmd.inspect_section_only": "断面のみ",
+    "help.inspect.section_only": "断面解析の切断面だけを厚みのないスライスとして表示し、各ボディの残りを非表示にします。背後のモデルなしで断面形状を確認するときに使います。"
+  },
+  "ko": {
+    "Section Only": "단면만",
+    "cmd.inspect_section_only": "단면만",
+    "help.inspect.section_only": "단면 분석의 절단면만 두께 없는 슬라이스로 표시하고 각 바디의 나머지는 숨깁니다. 뒤에 있는 모델 없이 단면 형상을 볼 때 사용합니다."
+  },
+  "vi": {
+    "Section Only": "Chỉ mặt cắt",
+    "cmd.inspect_section_only": "Chỉ mặt cắt",
+    "help.inspect.section_only": "Chỉ hiển thị mặt cắt của Phân tích mặt cắt, một lát cắt không có độ dày, và ẩn phần còn lại của mọi thân. Dùng để đọc biên dạng mặt cắt mà không có mô hình phía sau."
+  },
+  "zh": {
+    "Section Only": "仅显示截面",
+    "cmd.inspect_section_only": "仅显示截面",
+    "help.inspect.section_only": "只显示剖面分析的截面，即没有厚度的切片，并隐藏每个实体的其余部分。用于在没有后方模型的情况下查看截面轮廓。"
+  }
+}

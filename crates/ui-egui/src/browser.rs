@@ -2602,7 +2602,7 @@ pub fn section_items(app: &SolveApp, plane: u64) -> Vec<Item> {
     let visible = section_plane_shown(app, plane, cutting);
     vec![
         Item::action("ui.editSection", "Edit Section Analysis", "section").with(json!({ "plane": plane })),
-        crate::context_menu::cmd(app, "inspect.section_slice", "Slice Only"),
+        crate::context_menu::cmd(app, "inspect.section_only", "Section Only"),
         Item::sep(),
         Item::action("ui.removeSectionPlane", "Delete", "delete").with(json!({ "plane": plane })),
         Item::sep(),
