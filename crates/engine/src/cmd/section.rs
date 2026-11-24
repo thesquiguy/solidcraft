@@ -12,9 +12,10 @@ use crate::schema::{TypedContract, output_schema_for, section as contract};
 use crate::view::MAX_SECTION_PLANES;
 use crate::{Result, SectionPlane, Session};
 const SECTION: TypedContract<contract::SectionParams> = TypedContract::new();
+const SLICE: TypedContract<contract::SliceParams> = TypedContract::new();
 
-pub static COMMANDS: &[CommandSpec] =
-    &[CommandSpec::new("inspect.section", "Section Analysis", crate::checked!("inspect.section", section))
+pub static COMMANDS: &[CommandSpec] = &[
+    CommandSpec::new("inspect.section", "Section Analysis", crate::checked!("inspect.section", section))
     .contract(&SECTION).output(output_schema_for::<contract::SectionResult>)
     .at("SOLID", "INSPECT").icon("section").params(
         "plane: XY|XZ|YZ | construction plane name or id | {origin, normal}; offset?: expr, how far the cut moves against the plane's \
@@ -33,11 +34,23 @@ pub static COMMANDS: &[CommandSpec] =
          Returns section: the plane made {id, origin, normal, hatch, and for a named plane axis and at} \
          (null when the section is off, or for remove, hide, show and folder), planes: [{id, origin, normal, hidden}], every plane \
          of the section by id, and folder: null, or while the folder is hidden the ids that come back with it",
-    )];
+    ),
+    CommandSpec::new("inspect.section_slice", "Slice Only", crate::checked!("inspect.section_slice", slice_only))
+    .contract(&SLICE).output(output_schema_for::<contract::SliceResult>)
+    .at("SOLID", "INSPECT").icon("section").key("Alt+S").enabled(section_on).params(
+        "on?: bool (true: the Section Analysis shows only its cut face, a zero-thickness slice on its first plane on show, \
+         trimmed by its other planes, and hides the rest of every body; false: the whole cut model again; left out: it turns over). \
+         Needs a Section Analysis that is on; turns off with it. View only: the design is untouched. Returns slice: whether it is now on",
+    ),
+];
 
 fn section(s: &mut Session, p: &Value) -> Result<Value> {
     let before: Vec<u64> = s.section.iter().map(|c| c.id).collect();
     let made = change(s, p)?;
+    // Slice Only turns off with the section.
+    if s.section.is_empty() && s.section_hidden.is_empty() {
+        s.section_slice = false;
+    }
     // A plane on show shows the folder again, with the planes it hid.
     if !s.section.is_empty()
         && let Some(back) = s.section_folder.take()
@@ -56,6 +69,28 @@ fn section(s: &mut Session, p: &Value) -> Result<Value> {
         s.status_activated(crate::status_items::StatusId::Section);
     }
     Ok(reply(s, made))
+}
+
+/// Slice Only: the section shows only its cut face, or the whole cut model again.
+fn slice_only(s: &mut Session, p: &Value) -> Result<Value> {
+    let cmd = "inspect.section_slice";
+    let on = match p.get("on") {
+        None | Some(Value::Null) => !s.section_slice,
+        Some(v) => v.as_bool().ok_or_else(|| bad(cmd, "`on` must be true or false"))?,
+    };
+    if on {
+        section_on(s).map_err(|e| bad(cmd, e))?;
+    }
+    if on != s.section_slice {
+        s.section_slice = on;
+        s.refresh_display();
+    }
+    Ok(json!({ "slice": s.section_slice }))
+}
+
+/// Whether Slice Only has a section to show: one with a plane on show.
+fn section_on(s: &Session) -> std::result::Result<(), String> {
+    if s.section.is_empty() { Err("Slice Only needs a Section Analysis: start one first".into()) } else { Ok(()) }
 }
 
 /// Move the planes `ids` names between those on show and the hidden ones.

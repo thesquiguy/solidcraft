@@ -5372,25 +5372,33 @@ pub fn active_view(app: &SolveApp) -> solidcraft_engine::sketch::SketchView {
 }
 
 /// The section cut shown now, its planes: the open Section Analysis dialog's preview, else the
-/// session's (or a sketch's Slice).
+/// session's (or a sketch's Slice). With Slice Only on, a section shows only its cut face
+/// (`solidcraft_engine::view::shown_section`); a sketch's Slice stays as it is.
 pub fn section_planes(app: &SolveApp) -> Vec<SectionPlane> {
-    if let Some(d) = app.dialog.as_ref().filter(|d| matches!(d.kind, crate::dialogs::Kind::Section { .. })) {
-        // Adding or moving a plane shows the section as it is until the plane is picked.
-        let adding = matches!(d.kind, crate::dialogs::Kind::Section { add: true, .. } | crate::dialogs::Kind::Section { edit: Some(_), .. });
-        let Some((_, p)) = crate::dialogs::apply_commands(app, d).ok().and_then(|cmds| cmds.into_iter().next()) else {
-            return if adding { app.session.section.clone() } else { Vec::new() };
-        };
-        let mut scratch = app.session.scratch();
-        scratch.set_section_state(app.session.section_state());
-        return match scratch.execute("inspect.section", &p) {
-            Ok(_) => scratch.section,
-            Err(_) if adding => app.session.section.clone(),
-            Err(_) => Vec::new(),
-        };
+    let dialog = app.dialog.as_ref().filter(|d| matches!(d.kind, crate::dialogs::Kind::Section { .. }));
+    if dialog.is_none()
+        && let Some((origin, normal)) = slice_plane(app)
+    {
+        return vec![SectionPlane { id: 0, origin, normal }];
     }
-    match slice_plane(app) {
-        Some((origin, normal)) => vec![SectionPlane { id: 0, origin, normal }],
-        None => app.session.section.clone(),
+    solidcraft_engine::view::shown_section(&section_cut(app, dialog), app.session.section_slice)
+}
+
+/// The section's own planes, before Slice Only: the open Section Analysis dialog's preview
+/// (`dialog`), else the session's.
+fn section_cut(app: &SolveApp, dialog: Option<&crate::dialogs::Dialog>) -> Vec<SectionPlane> {
+    let Some(d) = dialog else { return app.session.section.clone() };
+    // Adding or moving a plane shows the section as it is until the plane is picked.
+    let adding = matches!(d.kind, crate::dialogs::Kind::Section { add: true, .. } | crate::dialogs::Kind::Section { edit: Some(_), .. });
+    let Some((_, p)) = crate::dialogs::apply_commands(app, d).ok().and_then(|cmds| cmds.into_iter().next()) else {
+        return if adding { app.session.section.clone() } else { Vec::new() };
+    };
+    let mut scratch = app.session.scratch();
+    scratch.set_section_state(app.session.section_state());
+    match scratch.execute("inspect.section", &p) {
+        Ok(_) => scratch.section,
+        Err(_) if adding => app.session.section.clone(),
+        Err(_) => Vec::new(),
     }
 }
 
