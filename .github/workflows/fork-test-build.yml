@@ -80,5 +80,5 @@ jobs:
           ls -la out
           gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
           gh release create "$TAG" out/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
-            --title "Pink test build: See-Through, Measure Into Value, Move Face (kernel)" \
-            --notes "Unsigned combined test build of ${GITHUB_REF_NAME} (${GITHUB_SHA::7}), pink icon. Not an official SolidCraft release. Shift+T toggles See-Through on the selection, Alt+Shift+T makes everything opaque, in an open feature dialog Ctrl+Shift+D then a pick measures into the value field (a second pick gives a distance or angle). Move Face is kernel-only so far, with no command in the app. Mac (Apple Silicon): open the dmg, drag to Applications, then right-click > Open the first time."
+            --title "Pink test build: See-Through, Measure Into Value, Slice Only, Move Face (kernel)" \
+            --notes "Unsigned combined test build of ${GITHUB_REF_NAME} (${GITHUB_SHA::7}), pink icon. Not an official SolidCraft release. Shift+T toggles See-Through on the selection, Alt+Shift+T makes everything opaque, in an open feature dialog Ctrl+Shift+D then a pick measures into the value field (a second pick gives a distance or angle). With a Section Analysis on, Alt+S shows only the cut face (Slice Only). Move Face is kernel-only so far, with no command in the app. Mac (Apple Silicon): open the dmg, drag to Applications, then right-click > Open the first time."
