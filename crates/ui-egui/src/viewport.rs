@@ -5381,7 +5381,15 @@ pub fn section_planes(app: &SolveApp) -> Vec<SectionPlane> {
     {
         return vec![SectionPlane { id: 0, origin, normal }];
     }
-    solidcraft_engine::view::shown_section(&section_cut(app, dialog), app.session.section_only)
+    let only = app.session.section_only;
+    // The model's reach from the origin, not the camera's, so zooming leaves the planes as they are.
+    let size = if only {
+        let b = scene_bounds(app);
+        if b.is_empty() || !b.diagonal().is_finite() { 50.0 } else { b.diagonal() * 0.5 + b.center().len() }
+    } else {
+        0.0
+    };
+    solidcraft_engine::view::shown_section(&section_cut(app, dialog), only, size)
 }
 
 /// The section's own planes, before Section Only: the open Section Analysis dialog's preview
