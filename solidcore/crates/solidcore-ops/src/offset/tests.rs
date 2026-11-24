@@ -2585,6 +2585,239 @@ mod drafts {
     }
 }
 
+/// Move Face on planes (tangency-labs/solidcraft#15550) against closed forms on the 30 x 20 x 10
+/// block: each moved face's new plane is its own carried by the motion, so the solid is the block
+/// cut or grown to that plane.
+mod moves {
+    use super::{all_fixes, block, face, order, rel, top, volume, ABC};
+    use crate::offset::move_faces;
+    use crate::{make_cylinder, Error, Order};
+    use std::f64::consts::PI;
+
+    const X: [f64; 3] = [1.0, 0.0, 0.0];
+    const Z: [f64; 3] = [0.0, 0.0, 1.0];
+
+    // The closed forms' angles and tangents as numbers (ops computes no trigonometry, its
+    // tests included): each the double nearest its expression.
+    /// 5 degrees, radians.
+    const FIVE: f64 = 0.087_266_462_599_716_47;
+    /// tan 5 degrees.
+    const TAN_FIVE: f64 = 0.087_488_663_525_924_01;
+    /// A right angle, radians: pi / 2.
+    const RIGHT: f64 = std::f64::consts::FRAC_PI_2;
+
+    /// A turn's axis point, axis and angle, as `move_faces` takes it.
+    type Turn = ([f64; 3], [f64; 3], f64);
+    /// A move's faces, translation and turn.
+    type Case = (Vec<usize>, [f64; 3], Option<Turn>);
+
+    /// The record index (through `o`) of the block's side flat at `x = at` (`axis` 0) or
+    /// `y = at` (1).
+    fn side(b: &crate::Body, o: &Order, axis: usize, at: f64) -> usize {
+        face(b, o, |bx| {
+            let c = |p: solidcore::Vec3| [p.x, p.y][axis];
+            (c(bx.min()) - at).abs() < 1e-9 && (c(bx.max()) - at).abs() < 1e-9
+        })
+    }
+
+    /// The top translated up 2 is the block 12 tall, whatever the translation along the top's
+    /// own plane: 30 x 20 x 12.
+    #[test]
+    fn the_top_translated_up() {
+        all_fixes();
+        for t in [[0.0, 0.0, 2.0], [3.0, -4.0, 2.0]] {
+            let b = block();
+            let o = order(&b);
+            move_faces(&b, &o, &[top(&b, &o)], t, None).unwrap();
+            assert!(rel(volume(&b), 7200.0) < 1e-9, "{t:?}: {}", volume(&b));
+            assert_eq!(b.counts().unwrap()[0], 6);
+        }
+    }
+
+    /// The side x = 30 translated 5 in is the block 25 long: 25 x 20 x 10.
+    #[test]
+    fn a_side_translated_in() {
+        all_fixes();
+        let b = block();
+        let o = order(&b);
+        move_faces(&b, &o, &[side(&b, &o, 0, 30.0)], [-5.0, 0.0, 0.0], None).unwrap();
+        assert!(rel(volume(&b), 5000.0) < 1e-9, "{}", volume(&b));
+        assert_eq!(b.counts().unwrap()[0], 6);
+    }
+
+    /// The top and the side x = 30 moved together by (1, 0, 1): each takes the part of the
+    /// motion along its normal, so the block is 31 x 20 x 11.
+    #[test]
+    fn two_faces_move_as_one_body() {
+        all_fixes();
+        let b = block();
+        let o = order(&b);
+        let faces = [top(&b, &o), side(&b, &o, 0, 30.0)];
+        move_faces(&b, &o, &faces, [1.0, 0.0, 1.0], None).unwrap();
+        assert!(rel(volume(&b), 6820.0) < 1e-9, "{}", volume(&b));
+        assert_eq!(b.counts().unwrap()[0], 6);
+    }
+
+    /// The top turned 5 degrees about the x axis line through (0, h, 10), then translated by
+    /// `up` along z: the plane z = 10 + up + (y - h) tan 5, so the volume is
+    /// 30 (20 (10 + up) + (200 - 20 h) tan 5). About its front edge (h = 0) a wedge goes on;
+    /// about its middle (h = 10) the wedges either side cancel.
+    #[test]
+    fn the_top_turned_about_a_line_on_it() {
+        all_fixes();
+        for (h, up) in [(0.0, 0.0), (10.0, 0.0), (0.0, 2.0)] {
+            let b = block();
+            let o = order(&b);
+            let turn = Some(([0.0, h, 10.0], X, FIVE));
+            move_faces(&b, &o, &[top(&b, &o)], [0.0, 0.0, up], turn).unwrap();
+            let v = 30.0 * (20.0 * (10.0 + up) + (200.0 - 20.0 * h) * TAN_FIVE);
+            assert!(rel(volume(&b), v) < 1e-9, "{h} {up}: {} {v}", volume(&b));
+            assert_eq!(b.counts().unwrap()[0], 6);
+        }
+    }
+
+    /// A move that keeps the top on its own plane leaves the block as it was: a slide along
+    /// the top, or a turn about the vertical line through its middle.
+    #[test]
+    fn a_move_within_the_faces_plane_leaves_the_block() {
+        all_fixes();
+        for (tr, turn) in [
+            ([5.0, 0.0, 0.0], None),
+            ([0.0; 3], Some(([15.0, 10.0, 10.0], Z, 0.7))),
+        ] {
+            let b = block();
+            let o = order(&b);
+            move_faces(&b, &o, &[top(&b, &o)], tr, turn).unwrap();
+            assert!(
+                rel(volume(&b), ABC) < 1e-12,
+                "{tr:?} {turn:?}: {}",
+                volume(&b)
+            );
+            assert_eq!(b.counts().unwrap(), [6, 12, 8]);
+        }
+    }
+
+    /// A turn about the top's own normal changes no point of its plane, so with a translation
+    /// of 3 down or up the block is 30 x 20 x 7 or 30 x 20 x 13, whatever the angle or the
+    /// axis's point. (Given its plane on a frame spun 0.7 about the normal, the local operation
+    /// returned a valid solid of 4380.2 and 7796.5.)
+    #[test]
+    fn a_turn_about_the_faces_normal_moves_it_by_the_translation_alone() {
+        all_fixes();
+        for (center, angle, up, v) in [
+            ([15.0, 10.0, 10.0], 0.7, -3.0, 4200.0),
+            ([0.0, 0.0, 0.0], 0.7, -3.0, 4200.0),
+            ([15.0, 10.0, 10.0], 0.7, 3.0, 7800.0),
+            ([15.0, 10.0, 10.0], 0.1, -3.0, 4200.0),
+        ] {
+            let b = block();
+            let o = order(&b);
+            let turn = Some((center, Z, angle));
+            move_faces(&b, &o, &[top(&b, &o)], [0.0, 0.0, up], turn).unwrap();
+            assert!(
+                rel(volume(&b), v) < 1e-9,
+                "{center:?} {angle} {up}: {}",
+                volume(&b)
+            );
+            assert_eq!(b.counts().unwrap(), [6, 12, 8]);
+        }
+    }
+
+    /// A turn that takes the top's normal to a right angle or past it is refused, the block as
+    /// it came in: the top would face across or into the material under it.
+    #[test]
+    fn a_turn_to_square_or_past_is_refused() {
+        all_fixes();
+        let b = block();
+        let o = order(&b);
+        let before = b.to_smb(false).unwrap();
+        for angle in [RIGHT, 2.0, -2.0, PI] {
+            let turn = Some(([0.0, 0.0, 10.0], X, angle));
+            assert!(
+                matches!(
+                    move_faces(&b, &o, &[top(&b, &o)], [0.0; 3], turn),
+                    Err(Error::Unsupported(_))
+                ),
+                "{angle}"
+            );
+        }
+        assert_eq!(b.to_smb(false).unwrap(), before);
+    }
+
+    /// Moving the top down through the bottom, or turning it down until it crosses the bottom,
+    /// takes away the bottom's edges: the kernel's typed refusal, naming the face, the block as
+    /// it came in.
+    #[test]
+    fn a_move_through_the_far_side_is_refused() {
+        all_fixes();
+        for (tr, turn) in [
+            ([0.0, 0.0, -15.0], None),
+            ([0.0; 3], Some(([0.0, 0.0, 10.0], X, -1.0))),
+        ] {
+            let b = block();
+            let o = order(&b);
+            let before = b.to_smb(false).unwrap();
+            assert!(
+                matches!(
+                    move_faces(&b, &o, &[top(&b, &o)], tr, turn),
+                    Err(Error::OffsetRefused { .. })
+                ),
+                "{tr:?} {turn:?}"
+            );
+            assert_eq!(b.to_smb(false).unwrap(), before);
+        }
+    }
+
+    /// Refused before the kernel, the body as it came in: no faces, an index past the faces or
+    /// twice, no motion, a translation or turn center not finite or too far, a turn axis of no
+    /// length, an angle not finite (Argument); a cylinder's side (Unsupported).
+    #[test]
+    fn hostile_moves_are_refused() {
+        all_fixes();
+        let b = block();
+        let o = order(&b);
+        let before = b.to_smb(false).unwrap();
+        let t = top(&b, &o);
+        let up = [0.0, 0.0, 1.0];
+        let cases: [Case; 12] = [
+            (vec![], up, None),
+            (vec![6], up, None),
+            (vec![t, t], up, None),
+            (vec![t], [0.0; 3], None),
+            (vec![t], [0.0; 3], Some(([0.0; 3], X, 0.0))),
+            (vec![t], [f64::NAN, 0.0, 0.0], None),
+            (vec![t], [0.0, 2e6, 0.0], None),
+            (vec![t], up, Some(([0.0; 3], [0.0; 3], 0.1))),
+            (vec![t], up, Some(([0.0; 3], [f64::NAN, 0.0, 0.0], 0.1))),
+            (vec![t], up, Some(([f64::INFINITY, 0.0, 0.0], X, 0.1))),
+            (vec![t], up, Some(([0.0, 0.0, 2e9], X, 0.1))),
+            (vec![t], up, Some(([0.0; 3], X, f64::NAN))),
+        ];
+        for (faces, tr, turn) in cases {
+            assert_eq!(
+                move_faces(&b, &o, &faces, tr, turn),
+                Err(Error::Argument),
+                "{faces:?} {tr:?} {turn:?}"
+            );
+        }
+        assert_eq!(b.to_smb(false).unwrap(), before);
+        let c = make_cylinder([0.0; 3], 5.0, 10.0).unwrap();
+        let oc = order(&c);
+        let wall = face(&c, &oc, |bx| {
+            let (lo, hi) = (bx.min(), bx.max());
+            hi.x - lo.x > 1e-6 && hi.y - lo.y > 1e-6 && hi.z - lo.z > 1e-6
+        });
+        let before = c.to_smb(false).unwrap();
+        assert!(matches!(
+            move_faces(&c, &oc, &[wall], [1.0, 0.0, 0.0], None),
+            Err(Error::Unsupported(_))
+        ));
+        assert_eq!(c.to_smb(false).unwrap(), before);
+        // the block's volume, untouched by any refusal
+        assert!(rel(volume(&b), ABC) < 1e-12);
+    }
+}
+
 /// Kernel diagnostics cross the application seam here; the app receives only ops
 /// data and need not name the kernel's reason classes or construct kernel errors.
 #[test]

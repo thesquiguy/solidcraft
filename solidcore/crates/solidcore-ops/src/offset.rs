@@ -14,6 +14,9 @@
 //! - [`draft`]: the faces named turned about their line or circle on a neutral plane
 //!   ([`solidcore::offset::draft::draft_surface`]), the faces around them extended or trimmed to
 //!   meet them (`SmBrep::LocalOperation`).
+//! - [`move_faces`]: the plane faces named moved as one rigid body, turned about an axis and
+//!   translated ([`solidcore::offset::move_face::moved_surface`]), the faces around them extended
+//!   or trimmed to meet them (`SmBrep::LocalOperation`).
 //!
 //! Each changes the body it is given, as the kernel does; a refused or failed one leaves it as
 //! it came in ([`crate::session`]'s edit wrapper).
@@ -22,6 +25,7 @@ use solidcore::error::offset::OffsetFailure;
 use solidcore::error::{ErrorKind, Reason};
 use solidcore::geom::attribute::{ids, Attribute, Behavior};
 use solidcore::offset::draft::{draft_surface, refuse_closing_wall, Draft, DraftRefusal};
+use solidcore::offset::move_face::{moved_surface, MoveFaceRefusal, RigidMove};
 use solidcore::offset::offset_executive::p2::{
     local_operation_simple, offset_brep_simple, OffsetOptions, ShellOptions,
 };
@@ -708,6 +712,92 @@ pub fn draft(
         }
         let drafted = std::mem::take(b);
         replace(k, b, drafted, expect)
+    })?
+}
+
+/// The farthest a move's turn axis point may lie from the origin along each axis.
+const MAX_TURN_CENTER: f64 = 1e9;
+
+/// A plane face the kernel cannot move, as the operation's error ([`Error::Unsupported`]).
+fn move_refused(r: MoveFaceRefusal) -> Error {
+    Error::Unsupported(match r {
+        MoveFaceRefusal::NotPlane => "a moved face is not a plane",
+        MoveFaceRefusal::TurnedPastSquare => {
+            "a turn takes a moved face's normal to a right angle or past it"
+        }
+    })
+}
+
+/// The plane faces of the solid `body` with record indices `faces` (through `order`, its
+/// record's [`Order`]) moved as one rigid body: turned by `turn`, `(center, axis, angle)`, the
+/// angle in radians about the axis through `center` along `axis` (right-hand rule), when given,
+/// then translated by `translation`. Each face takes its own plane carried by that motion
+/// ([`moved_surface`]), and the faces around them are extended or trimmed to meet them, as a
+/// draft's are. A move along a face's normal alone is an offset of that face; a move that keeps
+/// a face on its own plane leaves it where it was.
+///
+/// # Errors
+/// [`Error::Argument`] for no faces, an index past the faces, repeated or naming a face the body
+/// does not have, a translation not finite or past 1e6 on an axis, a turn axis not finite or not
+/// longer than 1e-12, a turn center not finite or past 1e9 on an axis, an angle not finite, no
+/// motion (no translation and no turn, or a zero angle), or a body that is not a valid solid
+/// facing out; [`Error::Unsupported`] for a face that is not a plane, or a turn that takes a
+/// face's normal to within about 1e-6 radians of square to where it was, or past it; [`Error::NoEffect`] for a move that left no moved face;
+/// [`Error::OffsetRefused`] for a move the kernel refuses with a reason; the kernel's other
+/// errors; those of [`finish`].
+pub fn move_faces(
+    body: &Body,
+    order: &Order,
+    faces: &[usize],
+    translation: [f64; 3],
+    turn: Option<([f64; 3], [f64; 3], f64)>,
+) -> Result<()> {
+    let v = |a: [f64; 3]| Vec3::new(a[0], a[1], a[2]);
+    let motion = match turn {
+        None => RigidMove::translation(v(translation)),
+        Some((center, axis, angle)) => {
+            RigidMove::turn_then_translate(v(center), v(axis), angle, v(translation))
+        }
+    };
+    let Ok(motion) = motion else {
+        return Err(Error::Argument);
+    };
+    let still = translation.iter().all(|&x| x == 0.0) && turn.is_none_or(|t| t.2 == 0.0);
+    if faces.is_empty()
+        || still
+        || !translation.iter().all(|x| x.abs() <= MAX_DISTANCE)
+        || turn.is_some_and(|t| !t.0.iter().all(|x| x.abs() <= MAX_TURN_CENTER))
+    {
+        return Err(Error::Argument);
+    }
+    with_body("MoveFaces", body, |k, b| {
+        let picked = match faces_of(b, order, faces) {
+            Ok(f) => f,
+            Err(e) => return Ok(Err(e)),
+        };
+        let expect = Expect::of(k, b)?;
+        if !expect.solid() {
+            return Ok(Err(Error::Argument));
+        }
+        let mut surfaces = Vec::new();
+        for &f in &picked {
+            match moved_surface(k, b, f, &motion) {
+                Ok(Ok(s)) => surfaces.push(s),
+                Ok(Err(r)) => return Ok(Err(move_refused(r))),
+                Err(e) => return Ok(Err(status(e, &in_order(order)))),
+            }
+        }
+        // the draft's marks, for this call only: put on the picked faces, read and removed once
+        // the kernel has moved them (a refused call puts the body back as it came in, unmarked)
+        mark_moved(b, &picked)?;
+        if let Err(e) = local_operation_simple(k, b, &picked, surfaces) {
+            return Ok(Err(status(e, &in_order(order))));
+        }
+        if !moved_faces(b)? {
+            return Ok(Err(Error::NoEffect));
+        }
+        let moved = std::mem::take(b);
+        replace(k, b, moved, expect)
     })?
 }
 
