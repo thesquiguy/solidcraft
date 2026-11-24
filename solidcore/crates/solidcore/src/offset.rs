@@ -7,6 +7,7 @@
 pub mod construction;
 pub mod curve_on_surfaces;
 pub mod draft;
+pub mod move_face;
 pub mod offset_executive;
 pub mod offset_faces;
 pub mod offset_geometry_creation;

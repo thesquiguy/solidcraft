@@ -177,6 +177,7 @@ pub use measure::RayHit;
 pub use measure::SquareFaceLevel;
 pub use measure::EDGE_POINTS_MAX;
 pub use offset::draft;
+pub use offset::move_faces;
 pub use offset::offset_faces;
 pub use offset::offset_sheet;
 pub use offset::offset_surface;
