@@ -76,6 +76,14 @@ pub static COMMANDS: &[CommandSpec] = &[
         .contract(&DIALOG_OK_CONTRACT)
         .output(crate::schema::output_schema_for::<crate::schema::edit::DialogOkResult>)
         .params("Runs OK in the feature dialog open in the app, as Enter does; bind it to a key in Preferences. Only the app has a dialog: called here it is refused, and changes nothing"),
+    CommandSpec::new("ui.measure_into_field", "Measure Into Value", crate::checked!("ui.measure_into_field", measure_into_field))
+        .icon("measure")
+        .key("Ctrl+Shift+D")
+        .noundo()
+        .doc_only()
+        .contract(&MEASURE_INTO_FIELD_CONTRACT)
+        .output(crate::schema::output_schema_for::<crate::schema::edit::MeasureIntoFieldResult>)
+        .params("In the app, measures what is picked next in the view (an edge's length, a hole's diameter or radius, the distance or angle between two picks) and writes it into the value field of the open dialog. Only the app has a dialog: called here it is refused, and changes nothing"),
     CommandSpec::new("edit.undo", "Undo", crate::checked!("edit.undo", undo))
         .any_part()
         .icon("undo")
@@ -387,6 +395,16 @@ const DIALOG_OK_CONTRACT: crate::schema::TypedContract<crate::schema::edit::Dial
 fn dialog_ok(_s: &mut Session, _p: &Value) -> Result<Value> {
     Err(EngineError::Other(
         "ui.dialog_ok runs OK in the dialog open in the app; a headless session has no dialog: run the dialog's command itself".into(),
+    ))
+}
+
+const MEASURE_INTO_FIELD_CONTRACT: crate::schema::TypedContract<crate::schema::edit::MeasureIntoFieldParams> = crate::schema::TypedContract::new();
+
+/// Measure Into Value writes a measurement into the app's open dialog, which only the app has:
+/// it starts in `SolveApp::start` and never reaches this.
+fn measure_into_field(_s: &mut Session, _p: &Value) -> Result<Value> {
+    Err(EngineError::Other(
+        "ui.measure_into_field writes a measurement into the dialog open in the app; a headless session has no dialog: use inspect.measure and pass the value to the command".into(),
     ))
 }
 

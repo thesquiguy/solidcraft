@@ -1,0 +1,11 @@
+{
+  "en": {
+    "cmd.ui.measure_into_field": "Measure Into Value",
+    "measure_into.done": "Measured {value} into the value.",
+    "measure_into.filled": "Measured {value}. Pick a second item to measure between the two, or press Enter to keep it.",
+    "measure_into.no_field": "Measure Into Value writes into a value of an open dialog: open a dialog with a value first.",
+    "measure_into.none": "Nothing to measure between these two. Pick again.",
+    "measure_into.second": "Pick a second item to measure the distance or angle to it.",
+    "measure_into.start": "Measure Into Value: pick an edge, a round face or a point. A second pick measures between the two. Enter keeps the value, Esc puts the old one back."
+  }
+}

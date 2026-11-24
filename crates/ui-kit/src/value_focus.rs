@@ -135,3 +135,81 @@ pub fn canvas_value_focus(ctx: &egui::Context) -> Option<(egui::Id, usize)> {
         .filter(|(pass, _, _)| *pass == ctx.cumulative_pass_nr())
         .map(|(_, id, length)| (id, length))
 }
+
+/// A value field that a viewport tool writes into from outside the form, such as Measure Into
+/// Value: the form owns the text, so the field's editor takes the new text the next time it is
+/// drawn, as if it were typed. The field's text before the first write is kept, so the write can
+/// be undone with [`restore_value_field`].
+#[derive(Clone)]
+struct FilledField {
+    id: egui::Id,
+    /// Text to write the next time the field is drawn.
+    pending: Option<String>,
+    /// The field's text before the first write.
+    original: Option<String>,
+    /// The field's text and row label when it was last drawn.
+    text: String,
+    label: String,
+    /// The pass the field was last drawn in.
+    drawn: u64,
+}
+
+fn filled_field_id() -> egui::Id {
+    egui::Id::unique("sc_filled_value_field")
+}
+
+/// Watch the value editor `id`, so that [`fill_value_field`] can write into it.
+pub fn watch_value_field(ctx: &egui::Context, id: egui::Id) {
+    let field = FilledField { id, pending: None, original: None, text: String::new(), label: String::new(), drawn: ctx.cumulative_pass_nr() };
+    ctx.data_mut(|data| data.insert_temp(filled_field_id(), field));
+}
+
+/// Stop watching the field. Its text stays as it is now.
+pub fn unwatch_value_field(ctx: &egui::Context) {
+    ctx.data_mut(|data| data.remove::<FilledField>(filled_field_id()));
+}
+
+/// Write `text` into the watched field the next time it is drawn.
+pub fn fill_value_field(ctx: &egui::Context, text: &str) {
+    with_filled_field(ctx, |field| field.pending = Some(text.to_owned()));
+}
+
+/// Put back the text the watched field had before the first write, the next time it is drawn.
+pub fn restore_value_field(ctx: &egui::Context) {
+    with_filled_field(ctx, |field| field.pending = field.original.clone());
+}
+
+/// The watched field's text and row label when it was last drawn, and the pass it was drawn in.
+pub fn watched_value_field(ctx: &egui::Context) -> Option<(String, String, u64)> {
+    ctx.data(|data| data.get_temp::<FilledField>(filled_field_id())).map(|field| (field.text, field.label, field.drawn))
+}
+
+fn with_filled_field(ctx: &egui::Context, change: impl FnOnce(&mut FilledField)) {
+    ctx.data_mut(|data| {
+        if let Some(mut field) = data.get_temp::<FilledField>(filled_field_id()) {
+            change(&mut field);
+            data.insert_temp(filled_field_id(), field);
+        }
+    });
+}
+
+/// Called by each kit value editor right after it is drawn: the watched field takes the text
+/// written into it and notes its text and label.
+pub(crate) fn take_value_fill(ui: &egui::Ui, response: &mut egui::Response, value: &mut String, label: &str) {
+    let ctx = ui.ctx();
+    let Some(mut field) = ctx.data(|data| data.get_temp::<FilledField>(filled_field_id())) else { return };
+    if field.id != response.id {
+        return;
+    }
+    if let Some(text) = field.pending.take() {
+        field.original.get_or_insert_with(|| value.clone());
+        if *value != text {
+            *value = text;
+            response.mark_changed();
+        }
+    }
+    field.text = value.clone();
+    field.label = label.to_owned();
+    field.drawn = ctx.cumulative_pass_nr();
+    ctx.data_mut(|data| data.insert_temp(filled_field_id(), field));
+}

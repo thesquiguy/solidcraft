@@ -48,7 +48,7 @@ fn wanted(app: &SolveApp) -> bool {
 }
 
 /// Can `sel` be measured here? A sketch's curves, points and regions are, open or only shown.
-fn measurable(sel: &Sel) -> bool {
+pub(crate) fn measurable(sel: &Sel) -> bool {
     matches!(
         sel,
         Sel::Edge { .. }
@@ -86,7 +86,7 @@ pub(crate) fn poll(app: &mut SolveApp, ctx: &egui::Context) {
 }
 
 /// Measure `selection` on a copy of the session, off the window thread.
-fn start(app: &SolveApp, selection: &[Sel]) -> Option<std::sync::mpsc::Receiver<Option<Value>>> {
+pub(crate) fn start(app: &SolveApp, selection: &[Sel]) -> Option<std::sync::mpsc::Receiver<Option<Value>>> {
     let session = app.session.scratch();
     let selection = selection.to_vec();
     let (tx, rx) = std::sync::mpsc::channel();

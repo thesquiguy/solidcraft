@@ -68,6 +68,15 @@ pub struct DialogOkParams {}
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct DialogOkResult {}
 
+/// `ui.measure_into_field` takes nothing: it measures the next picks in the app's view.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[schemars(deny_unknown_fields)]
+pub struct MeasureIntoFieldParams {}
+
+/// Never produced: headless calls are refused, and the app writes into its own dialog.
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct MeasureIntoFieldResult {}
+
 /// `edit.repeat` takes no parameters: it starts the last tool with its defaults.
 #[derive(Debug, Deserialize, JsonSchema)]
 #[schemars(deny_unknown_fields)]
@@ -1668,6 +1677,7 @@ mod tests {
         assert_keys(input_schema_for::<super::AppBarCustomizeParams>(), &[]);
         assert_keys(input_schema_for::<super::AppBarResetParams>(), &[]);
         assert_keys(input_schema_for::<RepeatParams>(), &[]);
+        assert_keys(input_schema_for::<super::MeasureIntoFieldParams>(), &[]);
         assert_keys(input_schema_for::<AssistantParams>(), &[]);
         assert_keys(input_schema_for::<PaletteParams>(), &[]);
         assert_keys(input_schema_for::<ToggleVisibilityParams>(), &[]);
