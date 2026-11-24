@@ -609,6 +609,9 @@ pub struct Dialog {
     pub focus: bool,
     /// Last focused value editor, shared by the form and its on-canvas value box.
     value_focus: Option<egui::Id>,
+    /// The value field Measure Into Value writes into: the one focused last while it is still
+    /// drawn, else the first one (`measure_into`).
+    measure_field: Option<egui::Id>,
     /// A viewport press or click returns the keyboard after selection and canvas updates.
     pub(crate) restore_value_focus: bool,
     /// A pick field was clicked into and waits for its pick: a click in the view that picks
@@ -918,6 +921,7 @@ impl Dialog {
             profile_selection_changed: false,
             focus: true,
             value_focus: None,
+            measure_field: None,
             restore_value_focus: false,
             awaiting_pick: false,
             pick_refused: None,
@@ -1669,6 +1673,11 @@ impl Dialog {
             Kind::SketchModify(k) => return k.primary(),
             _ => return None,
         })
+    }
+
+    /// The value field Measure Into Value writes into, if the dialog draws one.
+    pub(crate) fn measure_field(&self) -> Option<egui::Id> {
+        self.measure_field
     }
 
     pub fn wants_picks(&self) -> bool {
@@ -4536,6 +4545,7 @@ pub(crate) fn corner_confirms(d: &Dialog) -> bool {
 /// view, sized to its content. The right edge is its place, except while a sketch is open: the
 /// Sketch Palette keeps the right there, and the dialog takes the left so both stay on screen.
 pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
+    crate::measure_into::poll(app, ctx);
     let escape_routed_here = !crate::viewport_status::enabled(app) || app.escape_owner.is_none_or(|owner| owner == crate::EscapeOwner::Dialog);
     // A click in the view's corner is for the dialog open this frame, or for none.
     let corner = app.viewport.corner.take();
@@ -4828,6 +4838,10 @@ pub fn show(app: &mut SolveApp, ctx: &egui::Context) {
             d.pick_refused = None;
         }
     }
+    d.measure_field = d
+        .value_focus
+        .or(d.measure_field.filter(|id| value_fields.iter().any(|(field, _)| field == id)))
+        .or_else(|| value_fields.first().map(|(id, _)| *id));
     // Each prompt draws only for its own dialog, so both run (`|`, not `||`).
     let preset_prompt = crate::hole_presets::name_prompt(ctx, &mut d, &mut app.preferences.hole_presets, &app.session.doc)
         | crate::personal_sheet_rules::name_prompt(ctx, &mut d, &mut app.preferences.personal_sheet_rules, &app.session.doc);

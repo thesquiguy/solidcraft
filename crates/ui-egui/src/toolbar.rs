@@ -2896,6 +2896,11 @@ pub fn shortcuts(app: &mut SolveApp, ctx: &egui::Context) {
 }
 
 fn shortcuts_focused(app: &mut SolveApp, ctx: &egui::Context) {
+    // Measure Into Value's key works while a dialog's value field is typed in, and Esc and Enter
+    // end measuring before the dialog sees them.
+    if crate::measure_into::keys(app, ctx) {
+        return;
+    }
     if crate::view_window_drag::keyboard_active(app, ctx) {
         return;
     }

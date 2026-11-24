@@ -2017,6 +2017,12 @@ fn assistant_toggle_is_refused_headlessly_without_changing_the_document() {
     assert_eq!((s.doc.to_json(), s.undo.len()), before);
     let spec = crate::find_command("ui.dialog_ok").unwrap();
     assert_eq!((spec.shortcut, spec.tab, spec.undoable), (None, "", false));
+    // Measure Into Value likewise: only the app has a dialog to write into.
+    let error = s.execute("ui.measure_into_field", &json!({})).unwrap_err().to_string();
+    assert!(error.contains("headless session"), "{error}");
+    assert_eq!((s.doc.to_json(), s.undo.len()), before);
+    let spec = crate::find_command("ui.measure_into_field").unwrap();
+    assert_eq!((spec.shortcut, spec.tab, spec.undoable), (Some("Ctrl+Shift+D"), "", false));
 }
 
 #[test]

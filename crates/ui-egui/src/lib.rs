@@ -148,6 +148,9 @@ mod look_at_tests;
 mod manage_dialogs_tests;
 mod material_card_review;
 mod material_editor;
+pub(crate) mod measure_into;
+#[cfg(test)]
+mod measure_into_tests;
 
 #[cfg(test)]
 mod measurement_ui_tests;
@@ -892,6 +895,10 @@ pub struct SolveApp {
     pub recovery_discard_all: bool,
     /// The selection's measurement in the view's corner (#7000).
     pub(crate) quick_measure: quick_measure::QuickMeasure,
+    /// Measure Into Value: picks in the view are measured into a dialog's value field.
+    pub(crate) measure_into: Option<measure_into::MeasureInto>,
+    /// Measure Into Value was cancelled: the field takes its old text back when next drawn.
+    pub(crate) measure_into_restoring: bool,
     /// An STL or OBJ file waiting for the unit its coordinates are in (`mesh_units`).
     pub mesh_units: Option<mesh_units::Ask>,
     /// A STEP, IGES, FreeCAD, Rhino or glTF file waiting for its import options (`import_options`).
@@ -1207,6 +1214,8 @@ impl SolveApp {
             reopen_guard_dir: None,
             recovery_discard_all: false,
             quick_measure: Default::default(),
+            measure_into: None,
+            measure_into_restoring: false,
             mesh_units: None,
             import_options: None,
             import_options_waiting: Default::default(),
@@ -2406,6 +2415,11 @@ impl SolveApp {
         // Dialog OK runs OK in the open dialog and starts nothing (#17416).
         if id == "ui.dialog_ok" {
             dialogs::confirm(self);
+            return;
+        }
+        // Measure Into Value measures the next picks into the open dialog's value field.
+        if id == measure_into::COMMAND {
+            measure_into::start(self);
             return;
         }
         // A tool or dialog started, for usage statistics (`usage_stats`), even if it is cancelled.

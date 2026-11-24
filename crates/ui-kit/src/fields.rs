@@ -964,6 +964,7 @@ fn editor_reserving(ui: &mut Ui, value: &mut String, hint: &str, completion: boo
         edit = edit.margin(egui::Margin { left: inset, right: inset.saturating_add(reserve.round() as i8), top: 0, bottom: 0 });
     }
     let mut response = ui.add_sized(vec2(width, row_height()), edit);
+    super::take_value_fill(ui, &mut response, value, label(ui));
     if response.has_focus() {
         ui.ctx().data_mut(|data| data.insert_temp(egui::Id::unique("sc_focused_editor"), response.id));
     }
@@ -2282,6 +2283,7 @@ pub fn canvas_value_field(ui: &mut Ui, id: egui::Id, value: &mut String, keep_ta
         edit = edit.event_filter(egui::EventFilter { tab: true, horizontal_arrows: true, ..Default::default() });
     }
     let mut response = ui.add(edit);
+    super::take_value_fill(ui, &mut response, value, hint);
     super::text_menu::menu(ui, &mut response, value, super::text_menu::Field::LINE);
     t.input_bevel(ui, &response);
     let field = (ui.ctx().cumulative_pass_nr(), response.id, value.chars().count());

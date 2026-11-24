@@ -5896,6 +5896,10 @@ pub(crate) fn sketch_constraint_at(app: &SolveApp, pos: Pos2, hit: Option<&Hit>)
 /// What a click would pick: the first hit the open dialog's active input accepts, or with no
 /// dialog the first hit (sketch entities only belong to the active sketch).
 pub fn candidate(app: &SolveApp, hits: &[Hit]) -> Option<(Hit, Sel)> {
+    // Measure Into Value measures what it picks: an edge, a face, a point.
+    if crate::measure_into::active(app) {
+        return measure_candidates(app, hits).next();
+    }
     if let Some(d) = app.dialog.as_ref().filter(|d| d.wants_picks()) {
         let snap = d.face_snap(&app.session, hits);
         let snaps = crate::dialogs_assembly::takes_snaps(d);
@@ -5909,6 +5913,9 @@ pub fn candidate(app: &SolveApp, hits: &[Hit]) -> Option<(Hit, Sel)> {
 
 /// Every hit a click could pick, in order, each with its selection (Select Other).
 pub fn candidates(app: &SolveApp, hits: &[Hit]) -> Vec<(Hit, Sel)> {
+    if crate::measure_into::active(app) {
+        return measure_candidates(app, hits).collect();
+    }
     if let Some(d) = app.dialog.as_ref().filter(|d| d.wants_picks()) {
         // The face under the cursor is looked up once for every sketch point a face place may
         // snap to, before Select Other caps its rows.
@@ -5924,6 +5931,14 @@ pub fn candidates(app: &SolveApp, hits: &[Hit]) -> Vec<(Hit, Sel)> {
             .collect();
     }
     hits.iter().filter(|h| crate::selection_mode::allowed(app, h)).filter_map(|h| hit_candidate(app, h)).collect()
+}
+
+/// The hits Measure Into Value can measure, in order, each with its selection.
+fn measure_candidates<'a>(app: &'a SolveApp, hits: &'a [Hit]) -> impl Iterator<Item = (Hit, Sel)> + 'a {
+    hits.iter()
+        .filter(|h| crate::selection_mode::allowed(app, h))
+        .filter_map(|h| hit_candidate(app, h))
+        .filter(|(_, sel)| crate::quick_measure::measurable(sel))
 }
 
 /// What the selection filter lets a joint origin or trace point take (`snaps`: the dialog's active
@@ -8381,6 +8396,11 @@ fn show_view(app: &mut SolveApp, ui: &mut egui::Ui) {
                 // Calibrate Canvas: the click sets Point A or B on the image (#9108).
             } else if app.tool.is_some() {
                 crate::tools::on_click(app, &proj, p, mods.shift);
+            } else if crate::measure_into::active(app) {
+                // Measure Into Value: the pick is measured, not taken by the dialog.
+                if let Some((_, Some(sel))) = &cand {
+                    crate::measure_into::pick(app, sel.clone());
+                }
             } else if app.dialog.as_ref().is_some_and(|d| d.wants_picks()) {
                 let copy_free_3d_move = app.dialog.as_ref().is_some_and(|d| {
                     matches!(d.kind, crate::dialogs::Kind::SketchModify(crate::sketch_modify_ui::Mod::Move { three_d: true, copy: false, .. }))
@@ -8565,6 +8585,9 @@ fn show_view(app: &mut SolveApp, ui: &mut egui::Ui) {
                 crate::tools::finish(app);
             } else if app.dialog.is_none() {
                 crate::context_menu::open(app, p, held_mods);
+            } else if crate::measure_into::active(app) {
+                // Measure Into Value keeps the value written, as Enter does.
+                crate::measure_into::end(app, ui.ctx(), true);
             } else if crate::dialogs_frame::open_menu(app, p) {
                 // A centreline of the Frame Member being made: its Remove Tube menu (#15705).
             } else if app.preferences.right_click_confirms {
