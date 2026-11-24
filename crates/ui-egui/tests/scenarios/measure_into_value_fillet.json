@@ -1,0 +1,21 @@
+[
+ {"note": "Measure Into Value: a 4 mm edge measured into Fillet's Radius, then filleted with it."},
+ {"call": "engine.execute", "params": {"command": "solid.box", "params": {"length": 40, "width": 30, "height": 4}}},
+ {"call": "ui.view", "params": {"view": "home"}},
+ {"expect": {"bodies": 1, "volume": 4800}},
+ {"start": "solid.fillet"},
+ {"frames": 3},
+ {"key": "D", "ctrl": true, "shift": true},
+ {"until": {"status": "Measure Into Value"}},
+ {"click": {"world": [40, 0, 2]}},
+ {"until": {"dialog": "radius: \"4 mm\""}},
+ {"expect": {"status": "Measured 4 mm"}},
+ {"key": "Enter"},
+ {"frames": 3},
+ {"expect": {"dialog": "radius: \"4 mm\"", "status": null}},
+ {"click": {"world": [40, 0, 2]}},
+ {"frames": 3},
+ {"click": {"handle": "dialog:OK"}},
+ {"until": {"dialog": null}},
+ {"expect": {"errors": 0, "bodies": 1, "volume": [4786.2655, 1e-04]}}
+]

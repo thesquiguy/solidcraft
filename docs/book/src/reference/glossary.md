@@ -402,6 +402,20 @@ library can't be changed.
 - **Elsewhere:** material library, material database, appearance library.
 - **For translators:** a collection of materials; not a code library or a book library.
 
+### measure into value
+
+Writing a size measured on the model into a value of the open dialog, as if it were typed.
+
+The value is a number, not a link: it doesn't change when the model changes later. One pick
+gives an edge's length or a round edge's or face's diameter (its radius in a Radius field); a
+second pick gives the distance or angle between the two.
+
+- **In SolidCraft:** the command `ui.measure_into_field` (Measure Into Value, Ctrl+Shift+D by
+  default).
+- **Don't use:** pick value, sample.
+- **Elsewhere:** measure into field, measure in dialog.
+- **For translators:** "value" is the number in a dialog's field, not a parameter.
+
 ### moment of inertia
 
 How a body's mass resists turning about an axis: the mass times the square of its distance from
