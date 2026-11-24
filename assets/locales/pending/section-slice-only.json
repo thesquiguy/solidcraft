@@ -1,0 +1,42 @@
+{
+  "en": {
+    "Slice Only": "Slice Only",
+    "cmd.inspect_section_slice": "Slice Only",
+    "help.inspect.section_slice": "Shows only the cut face of a Section Analysis, a slice with no depth, and hides the rest of every body. Use it to read a cross-section's profile without the model behind it."
+  },
+  "ar": {
+    "Slice Only": "الشريحة فقط",
+    "cmd.inspect_section_slice": "الشريحة فقط",
+    "help.inspect.section_slice": "يعرض الوجه المقطوع فقط من تحليل المقطع، شريحة بلا عمق، ويخفي باقي كل جسم. استخدمه لقراءة شكل المقطع العرضي دون النموذج خلفه."
+  },
+  "de": {
+    "Slice Only": "Nur Schnittfläche",
+    "cmd.inspect_section_slice": "Nur Schnittfläche",
+    "help.inspect.section_slice": "Zeigt nur die Schnittfläche einer Schnittanalyse, eine Scheibe ohne Tiefe, und blendet den Rest jedes Körpers aus. Damit lesen Sie das Profil eines Querschnitts ohne das Modell dahinter."
+  },
+  "he": {
+    "Slice Only": "פרוסה בלבד",
+    "cmd.inspect_section_slice": "פרוסה בלבד",
+    "help.inspect.section_slice": "הצגת הפאה החתוכה בלבד של ניתוח חתך, פרוסה ללא עומק, והסתרת שאר כל גוף. מתאים לקריאת הפרופיל של חתך רוחב בלי המודל שמאחוריו."
+  },
+  "ja": {
+    "Slice Only": "断面のみ",
+    "cmd.inspect_section_slice": "断面のみ",
+    "help.inspect.section_slice": "断面解析の切断面だけを厚みのないスライスとして表示し、各ボディの残りを非表示にします。背後のモデルなしで断面形状を確認するときに使います。"
+  },
+  "ko": {
+    "Slice Only": "단면만",
+    "cmd.inspect_section_slice": "단면만",
+    "help.inspect.section_slice": "단면 분석의 절단면만 두께 없는 슬라이스로 표시하고 각 바디의 나머지는 숨깁니다. 뒤에 있는 모델 없이 단면 형상을 볼 때 사용합니다."
+  },
+  "vi": {
+    "Slice Only": "Chỉ lát cắt",
+    "cmd.inspect_section_slice": "Chỉ lát cắt",
+    "help.inspect.section_slice": "Chỉ hiển thị mặt cắt của Phân tích mặt cắt, một lát cắt không có độ dày, và ẩn phần còn lại của mọi thân. Dùng để đọc biên dạng mặt cắt mà không có mô hình phía sau."
+  },
+  "zh": {
+    "Slice Only": "仅显示截面",
+    "cmd.inspect_section_slice": "仅显示截面",
+    "help.inspect.section_slice": "只显示剖面分析的截面，即没有厚度的切片，并隐藏每个实体的其余部分。用于在没有后方模型的情况下查看截面轮廓。"
+  }
+}

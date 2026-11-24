@@ -853,7 +853,28 @@ pub fn component_color(s: &Session, component: u64) -> Option<[u8; 3]> {
 /// The scene for a headless render, cut by the session's section. A model that cannot be placed
 /// is the error.
 pub fn scene(s: &Session, cam: &Camera) -> Result<Scene> {
-    scene_with_section(s, cam, &s.section)
+    scene_with_section(s, cam, &shown_section(&s.section, s.section_slice))
+}
+
+/// How thick Slice Only's slab is at a plane `d` from the origin, in millimetres: far under
+/// anything drawn, but past the shaders' clipping slack (`clip_slack`), so a ray still crosses it.
+fn slice_depth(d: f64) -> f64 {
+    1e-3 + 1e-5 * d.abs()
+}
+
+/// The planes a section cuts the view with: `planes` as they are, or for Slice Only (`slice`)
+/// with a plane just behind the first, facing the other way. The two keep a slab too thin to
+/// see, so the view shows only the first plane's cut face (both sides of it), trimmed by the
+/// other planes, and hides the rest of every body. The new plane takes the first's id, so its
+/// cut has the same hatch. With every place taken, the planes stay as they are.
+pub fn shown_section(planes: &[SectionPlane], slice: bool) -> Vec<SectionPlane> {
+    let mut shown = planes.to_vec();
+    if let Some(first) = planes.first().filter(|_| slice && planes.len() < MAX_SECTION_PLANES) {
+        let (n, d) = first.clip();
+        let back = SectionPlane { id: first.id, origin: first.origin - n * slice_depth(d), normal: -n };
+        shown.insert(1, back);
+    }
+    shown
 }
 
 /// The scene for a headless render, cut by `section` (its planes) instead of the session's:
@@ -1826,6 +1847,81 @@ mod tests {
         // One plane shows its whole cut face; two show what the second keeps of it and the
         // second's.
         assert!(one > 500 && two > 300 && two != one, "cap pixels: one plane {one}, two {two}");
+    }
+
+    /// Slice Only: the view keeps a slab too thin to see behind the first plane, so only the
+    /// cut face is drawn. The cap keeps its pixels, the rest of the box goes, and the cut face
+    /// shows from behind as well.
+    #[test]
+    fn cpu_pictures_slice_only_show_just_the_cut_face() {
+        let mut s = Session::default();
+        s.execute("solid.box", &json!({"length": 40, "width": 30, "height": 20})).unwrap();
+        let cam = home_camera(&s).unwrap();
+        let picture = |s: &Session, cam: &Camera| {
+            let mut sc = scene(s, cam).unwrap();
+            sc.part_hatch = None;
+            solidcraft_viewport::render(&sc, cam, 300, 220).rgba
+        };
+        let empty = picture(&Session::default(), &cam);
+        // Pixels of the cap colour, and pixels where anything is drawn.
+        let count = |img: &[u8]| {
+            let warm = img.chunks(4).filter(|p| p[0] as i32 - p[2] as i32 > 20).count();
+            let drawn = img.chunks(4).zip(empty.chunks(4)).filter(|(a, b)| a != b).count();
+            (warm, drawn)
+        };
+        s.execute("inspect.section", &json!({"plane": {"origin": [0, 15, 0], "normal": [0, -1, 0]}})).unwrap();
+        let (cut_warm, cut_drawn) = count(&picture(&s, &cam));
+        let r = s.execute("inspect.section_slice", &json!({})).unwrap();
+        assert_eq!(r["slice"], json!(true));
+        let sc = scene(&s, &cam).unwrap();
+        assert_eq!(sc.clip.len(), 2, "the section's plane and the slab's back");
+        let (n, d) = (sc.clip[1].0, sc.clip[1].1);
+        assert!((n - Vec3::Y).len() < 1e-12 && d < -15.0 && d > -15.01, "{n:?} {d}");
+        let (slice_warm, slice_drawn) = count(&picture(&s, &cam));
+        // The cut face is 40 x 20 of the 40 x 30 x 20 box's cut: its pixels stay; the box's
+        // other faces go.
+        assert!(slice_warm * 10 >= cut_warm * 9 && slice_warm <= cut_warm + 50, "cap pixels: cut {cut_warm}, slice {slice_warm}");
+        assert!(slice_drawn * 2 < cut_drawn, "drawn pixels: cut {cut_drawn}, slice {slice_drawn}");
+        assert!(slice_drawn <= slice_warm * 13 / 10 + 50, "only the cut face and its outline: {slice_drawn} of {slice_warm}");
+        // From the other side, the cut face shows too.
+        let behind = Camera { yaw: cam.yaw + std::f64::consts::PI, ..cam.clone() };
+        assert!(count(&picture(&s, &behind)).0 > cut_warm / 2, "seen from behind");
+        // Off again, and back to the whole cut.
+        assert_eq!(s.execute("inspect.section_slice", &json!({"on": false})).unwrap()["slice"], json!(false));
+        assert_eq!(count(&picture(&s, &cam)), (cut_warm, cut_drawn));
+    }
+
+    /// Slice Only needs a section, turns off with it, and undoes with the section.
+    #[test]
+    fn slice_only_follows_the_section() {
+        let mut s = Session::default();
+        s.execute("solid.box", &json!({"length": 40, "width": 30, "height": 20})).unwrap();
+        assert!(s.execute("inspect.section_slice", &json!({"on": true})).is_err());
+        assert!(!s.section_slice);
+        s.execute("inspect.section", &json!({"plane": "XY", "at": 5})).unwrap();
+        s.execute("inspect.section_slice", &json!({"on": true})).unwrap();
+        // A second plane trims the slice; the slab's back goes in right behind the first.
+        s.execute("inspect.section", &json!({"plane": "YZ", "at": 10, "add": true})).unwrap();
+        let shown = shown_section(&s.section, s.section_slice);
+        assert_eq!(shown.len(), 3);
+        assert_eq!((shown[1].id, shown[1].normal), (shown[0].id, -shown[0].normal));
+        // `on` given again changes nothing.
+        assert_eq!(s.execute("inspect.section_slice", &json!({"on": true})).unwrap()["slice"], json!(true));
+        assert!(s.execute("inspect.section_slice", &json!({"on": 1})).is_err());
+        s.execute("edit.undo", &json!({})).unwrap();
+        assert!(s.section_slice && s.section.len() == 1, "undo takes back the plane added");
+        s.execute("edit.undo", &json!({})).unwrap();
+        assert!(!s.section_slice && s.section.len() == 1, "and then Slice Only");
+        s.execute("inspect.section_slice", &json!({})).unwrap();
+        // Hiding the Analysis folder keeps it; turning the section off ends it.
+        s.execute("inspect.section", &json!({"folder": false})).unwrap();
+        assert!(s.section_slice && shown_section(&s.section, true).is_empty());
+        s.execute("inspect.section", &json!({"folder": true})).unwrap();
+        s.execute("inspect.section", &json!({"clear": true})).unwrap();
+        assert!(!s.section_slice);
+        // With every place taken, the planes stay as they are.
+        let full: Vec<SectionPlane> = (1..=MAX_SECTION_PLANES as u64).map(|id| SectionPlane { id, origin: Vec3::ZERO, normal: Vec3::Z }).collect();
+        assert_eq!(shown_section(&full, true), full);
     }
 
     /// The section's cut face hides what lies inside the body behind it (it is drawn at the
