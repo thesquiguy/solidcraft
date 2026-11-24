@@ -3,18 +3,13 @@
 name: Fork test release
 
 on:
-  workflow_dispatch:
-    inputs:
-      windows_run:
-        description: "Run id holding the Windows artifact"
-        type: string
-      macos_run:
-        description: "Run id holding the macOS artifact"
-        type: string
-      tag:
-        description: "Release tag"
-        type: string
-        default: test-step-import-body-limit
+  push:
+    tags: ["test-release-*"]
+
+env:
+  WINDOWS_RUN: "45160051889"
+  MACOS_RUN: "45219301231"
+  TAG: test-step-import-body-limit
 
 permissions:
   contents: write
@@ -28,19 +23,18 @@ jobs:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: solidcraft-pink-test-windows-portable
-          run-id: ${{ inputs.windows_run }}
+          run-id: ${{ env.WINDOWS_RUN }}
           github-token: ${{ github.token }}
           path: out
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: solidcraft-pink-test-macos-dmg
-          run-id: ${{ inputs.macos_run }}
+          run-id: ${{ env.MACOS_RUN }}
           github-token: ${{ github.token }}
           path: out
       - name: Publish prerelease
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
           ls -la out
