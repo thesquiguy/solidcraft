@@ -897,8 +897,8 @@ pub struct SolveApp {
     pub(crate) quick_measure: quick_measure::QuickMeasure,
     /// Measure Into Value: picks in the view are measured into a dialog's value field.
     pub(crate) measure_into: Option<measure_into::MeasureInto>,
-    /// Measure Into Value was cancelled: the field takes its old text back when next drawn.
-    pub(crate) measure_into_restoring: bool,
+    /// Measure Into Value ended: the field takes its last text when next drawn, then is let go.
+    pub(crate) measure_into_settling: bool,
     /// An STL or OBJ file waiting for the unit its coordinates are in (`mesh_units`).
     pub mesh_units: Option<mesh_units::Ask>,
     /// A STEP, IGES, FreeCAD, Rhino or glTF file waiting for its import options (`import_options`).
@@ -1215,7 +1215,7 @@ impl SolveApp {
             recovery_discard_all: false,
             quick_measure: Default::default(),
             measure_into: None,
-            measure_into_restoring: false,
+            measure_into_settling: false,
             mesh_units: None,
             import_options: None,
             import_options_waiting: Default::default(),

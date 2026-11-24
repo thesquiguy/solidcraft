@@ -44,7 +44,7 @@ pub(crate) fn start(app: &mut SolveApp) {
         return;
     };
     app.measure_into = Some(MeasureInto { field, watching: false, picks: Vec::new(), job: None });
-    app.measure_into_restoring = false;
+    app.measure_into_settling = false;
     let text = app.tr("measure_into.start").to_owned();
     app.set_status(text, false);
 }
@@ -56,11 +56,10 @@ pub(crate) fn end(app: &mut SolveApp, ctx: &egui::Context, keep: bool) {
     }
     if !keep {
         crate::ui_kit::restore_value_field(ctx);
-        // The field takes its old text the next time it is drawn; stop watching after that.
-        app.measure_into_restoring = true;
-    } else {
-        crate::ui_kit::unwatch_value_field(ctx);
     }
+    // The field takes a value still on its way, or its old text, the next time it is drawn;
+    // it is watched until then.
+    app.measure_into_settling = true;
     app.status = None;
 }
 
@@ -119,11 +118,12 @@ pub(crate) fn keys(app: &mut SolveApp, ctx: &egui::Context) -> bool {
 
 /// Each frame: write a measurement that is in, and stop when the dialog or its field is gone.
 pub(crate) fn poll(app: &mut SolveApp, ctx: &egui::Context) {
-    if app.measure_into_restoring {
-        // The old text went back into the field when it was last drawn.
-        if crate::ui_kit::watched_value_field(ctx).is_none_or(|(_, _, drawn)| drawn + 1 < ctx.cumulative_pass_nr()) {
+    if app.measure_into_settling {
+        // Stop watching once the field took its last text, or is no longer drawn.
+        let gone = crate::ui_kit::watched_value_field(ctx).is_none_or(|(_, _, drawn)| drawn + 3 < ctx.cumulative_pass_nr());
+        if gone || !crate::ui_kit::value_fill_pending(ctx) {
             crate::ui_kit::unwatch_value_field(ctx);
-            app.measure_into_restoring = false;
+            app.measure_into_settling = false;
         } else {
             ctx.request_repaint();
         }
@@ -187,11 +187,7 @@ pub(crate) fn poll(app: &mut SolveApp, ctx: &egui::Context) {
 /// number in a length field is millimetres, and most value fields are lengths).
 pub(crate) fn field_kind(doc: &solidcraft_engine::doc::Document, text: &str) -> Kind {
     let text = text.trim();
-    if !text.is_empty() && doc.eval(text, Kind::Unitless).is_err() && doc.eval(text, Kind::Angle).is_ok() {
-        Kind::Angle
-    } else {
-        Kind::Length
-    }
+    if !text.is_empty() && doc.eval(text, Kind::Unitless).is_err() && doc.eval(text, Kind::Angle).is_ok() { Kind::Angle } else { Kind::Length }
 }
 
 /// The value a measurement writes into a field of `kind` labelled `label`, as the field's text:
