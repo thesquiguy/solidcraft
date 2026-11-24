@@ -184,6 +184,11 @@ pub fn watched_value_field(ctx: &egui::Context) -> Option<(String, String, u64)>
     ctx.data(|data| data.get_temp::<FilledField>(filled_field_id())).map(|field| (field.text, field.label, field.drawn))
 }
 
+/// Whether text written into the watched field still waits for the field to be drawn.
+pub fn value_fill_pending(ctx: &egui::Context) -> bool {
+    ctx.data(|data| data.get_temp::<FilledField>(filled_field_id())).is_some_and(|field| field.pending.is_some())
+}
+
 fn with_filled_field(ctx: &egui::Context, change: impl FnOnce(&mut FilledField)) {
     ctx.data_mut(|data| {
         if let Some(mut field) = data.get_temp::<FilledField>(filled_field_id()) {
