@@ -1061,6 +1061,7 @@ fn base_scene_key(app: &SolveApp) -> u64 {
     app.preview.effective_replaced().hash(&mut h);
     app.preview.rolled_back.hash(&mut h);
     frame_ghosting(app).hash(&mut h);
+    app.session.see_through.hash(&mut h);
     app.preferences.cosmetic_threads.hash(&mut h);
     app.preferences.section_hatch.hash(&mut h);
     solidcraft_theme::is_dark().hash(&mut h);
@@ -1206,6 +1207,22 @@ pub(crate) fn frame_ghosted(app: &SolveApp, body: &solidcraft_engine::doc::Model
     use solidcraft_engine::doc::FeatureKind;
     frame_ghosting(app)
         && app.session.doc.feature(body.feature).is_some_and(|f| matches!(f.kind, FeatureKind::FrameMember { .. } | FeatureKind::FrameEndCap { .. }))
+}
+
+/// The most a See-Through body (`view.see_through`) is drawn opaque: as faint as a ghosted frame
+/// member, but in its own colours.
+const SEE_THROUGH_OPACITY: f64 = FRAME_GHOST_OPACITY;
+
+/// A body made See-Through (#16384): drawn faint in its own colours and appearance, and picked as
+/// a ghosted frame member is, so a click on its faces reaches what is behind. View state only.
+pub(crate) fn see_through(app: &SolveApp, body: &solidcraft_engine::doc::ModelBody) -> bool {
+    !app.session.see_through.is_empty() && app.session.see_through.contains(&body.name)
+}
+
+/// A body whose faces don't stop a click and whose edges aren't picked: a ghosted frame member
+/// ([`frame_ghosted`]) or a See-Through body ([`see_through`]).
+pub(crate) fn clicked_through(app: &SolveApp, body: &solidcraft_engine::doc::ModelBody) -> bool {
+    frame_ghosted(app, body) || see_through(app, body)
 }
 
 /// With a component active, bodies outside it are drawn faded.
@@ -1711,7 +1728,7 @@ fn face_classes(app: &SolveApp, b: &solidcraft_engine::doc::ModelBody, active_bo
     if body_faded(app, b, active_bodies) {
         return vec![crate::gpu::TriClass::Faded; b.body.face_count()];
     }
-    if frame_ghosted(app, b) {
+    if frame_ghosted(app, b) || see_through(app, b) {
         return vec![crate::gpu::TriClass::Glass; b.body.face_count()];
     }
     let resolved = resolve_appearance(app, b);
@@ -2840,7 +2857,7 @@ fn section_outlines(sc: &mut GpuScene, app: &SolveApp, st: &solidcraft_engine::d
             }
         }
         made.insert(key, (mesh, index));
-        let solid = b.is_closed() && !body_faded(app, b, &active_bodies) && s.doc.model_body_opacity(b) >= 0.999;
+        let solid = b.is_closed() && !body_faded(app, b, &active_bodies) && !see_through(app, b) && s.doc.model_body_opacity(b) >= 0.999;
         if by_part && solid && !segments.is_empty() {
             cuts.push((b.name.as_str(), segments));
         }
@@ -2973,7 +2990,7 @@ fn body_scene(
     // more than once that look the same share its slots: a slot per face of every placement
     // filled the palette (`MAX_PALETTE`) at a hundred placements of a large assembly, and the
     // rest were drawn in one grey, without edges.
-    let mut copy_keys: std::collections::HashMap<(usize, u64, bool), String> = std::collections::HashMap::new();
+    let mut copy_keys: std::collections::HashMap<(usize, u64, bool, bool), String> = std::collections::HashMap::new();
     let keyed: Vec<_> = shown
         .iter()
         .map(|b| {
@@ -2991,10 +3008,13 @@ fn body_scene(
                 // A copy drawn finer than the others (zoomed in on) is drawn from its own plan, in
                 // its face slots: shared, they would name no motion, and a joint drag would leave it.
                 .filter(|_| repeated_copy(app, b) && refined(app, b).is_none())
-                .map(|definition| (definition, look_key(&s.doc, b, &appearance.faces, colored)));
+                // A See-Through copy is drawn apart from its solid copies.
+                .map(|definition| (definition, look_key(&s.doc, b, &appearance.faces, colored), see_through(app, b)));
             let slots = match copy {
-                Some((definition, look)) => {
-                    let key = copy_keys.entry((definition, look, faded)).or_insert_with(|| format!("\u{0}placed {definition:x} {look:x} {faded}"));
+                Some((definition, look, see)) => {
+                    let key = copy_keys
+                        .entry((definition, look, faded, see))
+                        .or_insert_with(|| format!("\u{0}placed {definition:x} {look:x} {faded} {see}"));
                     arena.shared(&b.name, key, b.body.face_count())
                 }
                 None => arena.body(&b.name, b.body.face_count()),
@@ -3005,7 +3025,8 @@ fn body_scene(
     drop(copy_keys);
     // Each repeated part's faces as its copies in one look draw them, worked out for the first
     // copy: the copies share the part's slots ([`CopyLook`]), so the rest would write the same.
-    let mut copy_looks: std::collections::HashMap<(usize, u64, bool, crate::gpu::PaletteIndex, u32), CopyLook> = std::collections::HashMap::new();
+    let mut copy_looks: std::collections::HashMap<(usize, u64, bool, bool, crate::gpu::PaletteIndex, u32), CopyLook> =
+        std::collections::HashMap::new();
     let mut sc = GpuScene::with_palette(crate::gpu::Palette::with_stable(arena.entries()).with_motions(arena.motions()));
     let mut made: std::collections::HashMap<u64, CachedBlock> = std::collections::HashMap::new();
     // The whole scene's blocks' draws, in `sc.blocks` order, kept so a camera move patches the
@@ -3040,6 +3061,7 @@ fn body_scene(
             && shaded
             && !faded
             && thread_budget.has_thread(&b.name, &st.threads)
+            && !see_through(app, b)
             && resolved.opacity >= 0.999
             && resolved.face_looks.values().all(|l| l.opacity >= 0.999)
         {
@@ -3050,11 +3072,14 @@ fn body_scene(
         }
         // Ghost Frame Members: see-through in the plain body colour, whatever its appearance.
         let ghosted = !faded && frame_ghosted(app, b);
+        // See-Through: faint in its own colours, each face no more opaque than its look makes it.
+        let see = !faded && !ghosted && see_through(app, b);
+        let faint = |opacity: f64| if see { opacity.min(SEE_THROUGH_OPACITY) } else { opacity };
         let base = if ghosted { tk.body } else { resolved.component.or(resolved.body).unwrap_or(tk.body) };
         let col = if faded { c4(base.gamma_multiply(0.35)) } else { c4(base) };
         set_palette_color(&mut arena, &mut sc.palette, slots.body, col);
         // Appearances: the body's opacity, and faces with looks of their own.
-        let opacity = if ghosted { FRAME_GHOST_OPACITY } else { resolved.opacity };
+        let opacity = if ghosted { FRAME_GHOST_OPACITY } else { faint(resolved.opacity) };
         // PBR finishes (metallic, roughness) for opaque bodies and faces in their own colours
         // (shown when Preferences › Graphics says so, `sky_uniform`).
         let finishes = !faded;
@@ -3067,7 +3092,7 @@ fn body_scene(
         // A face falls back to the body's own slot only when its face slots run short (the arena
         // full): only then do the copies' faces differ, each copy having a colour slot of its own.
         let fallback = if slots.faces != u32::MAX && slots.face_capacity as usize >= faces { crate::gpu::PaletteIndex(u32::MAX) } else { slots.body };
-        let copy_key = copy.map(|(definition, look)| (definition, look, faded, fallback, slots.faces));
+        let copy_key = copy.map(|(definition, look, see)| (definition, look, see, faded, fallback, slots.faces));
         let CopyLook { face_colors, face_classes, look_of, looks } = match copy_key.and_then(|k| copy_looks.get(&k)) {
             Some(made) => made.clone(),
             None => {
@@ -3081,7 +3106,7 @@ fn body_scene(
                 for f in 0..faces {
                     let look = face_looks.get(&f);
                     let color = look.map_or(base, |l| Color32::from_rgb(l.color[0], l.color[1], l.color[2]));
-                    let opacity = look.map_or(opacity, |l| l.opacity);
+                    let opacity = look.map_or(opacity, |l| faint(l.opacity));
                     let (rgba, class) = if faded {
                         (c4(color.gamma_multiply(0.35)), crate::gpu::TriClass::Faded)
                     } else if opacity < 0.999 {
@@ -5032,8 +5057,9 @@ fn pick_hits(app: &SolveApp, proj: &Proj, pos: Pos2, options: PickOptions<'_>) -
     // Bounds retain the state's body order. Looking each one up by name made both passes
     // quadratic for assemblies with many small parts.
     for (i, b) in st.bodies.iter().enumerate() {
-        // A ghosted frame member's faces don't stop a click: it goes through to what is behind.
-        if (!through && !app.body_visible(&b.name)) || frame_ghosted(app, b) {
+        // A ghosted frame member's or a See-Through body's faces don't stop a click: it goes
+        // through to what is behind.
+        if (!through && !app.body_visible(&b.name)) || clicked_through(app, b) {
             continue;
         }
         // Bodies whose box the ray misses (or enters behind the best hit so far) are skipped.
@@ -5110,8 +5136,8 @@ fn pick_hits(app: &SolveApp, proj: &Proj, pos: Pos2, options: PickOptions<'_>) -
         if !through && !app.body_visible(&b.name) {
             continue;
         }
-        // A ghosted frame member's vertices are picked, its edges are not.
-        let ghosted = frame_ghosted(app, b);
+        // A ghosted frame member's or a See-Through body's vertices are picked, its edges are not.
+        let ghosted = clicked_through(app, b);
         let mut body_slack = slack;
         if let Some(bb) = body_box(i, b) {
             // Only bodies whose outline on screen is near the cursor can have an edge under it.
@@ -6544,7 +6570,7 @@ fn highlight_opaque(app: &SolveApp, b: &solidcraft_engine::doc::ModelBody, activ
     }
     let doc = &app.session.doc;
     let faces_opaque = app.ui.visual_style == 2 || doc.face_colors(b).iter().all(|(_, l)| l.opacity >= 0.999);
-    !body_faded(app, b, active_bodies) && doc.model_body_opacity(b) >= 0.999 && faces_opaque
+    !body_faded(app, b, active_bodies) && !see_through(app, b) && doc.model_body_opacity(b) >= 0.999 && faces_opaque
 }
 
 /// Whole highlighted bodies the model draws as placements of shared triangles, collected as one
@@ -12644,6 +12670,31 @@ mod tests {
         assert_eq!(highlight.palette.get(slot).map(|c| [c[0], c[1], c[2]]), Some(look.color), "the face's colour, not the body's paint");
         let finish = highlight.palette.materials().get(slot.0 as usize).copied().unwrap_or_default();
         assert!(finish.pbr && finish.metallic == 1.0, "the face's metal finish: {finish:?}");
+    }
+
+    /// See-Through (#16384) draws a body faint in its own appearance's colour, every face as
+    /// glass, and Clear See-Through draws it solid again: the appearance is never changed.
+    #[test]
+    fn a_see_through_body_keeps_its_own_colour() {
+        let mut s = solidcraft_engine::Session::default();
+        s.execute("solid.box", &json!({"length": 20, "width": 20, "height": 20, "corner": [0, 0, 0], "body_name": "Block"})).unwrap();
+        let mut app = SolveApp::new(s, crate::Services::default());
+        app.run("appearance.assign", json!({"bodies": ["Block"], "color": "#0e9aa0"})).unwrap();
+        let drawn = |app: &SolveApp| {
+            let scene = build_scene(app);
+            let slot = app.viewport.palette.lock().unwrap().slots("Block").expect("the block has slots").face(0);
+            (scene.palette.get(slot), face_classes(app, &app_body(app, "Block"), &None))
+        };
+        let (solid, classes) = drawn(&app);
+        assert_eq!(solid, Some([0x0e, 0x9a, 0xa0, 255]));
+        assert!(classes.iter().all(|c| *c == crate::gpu::TriClass::Opaque));
+        app.run("view.see_through", json!({"bodies": ["Block"]})).unwrap();
+        let (faint, classes) = drawn(&app);
+        assert_eq!(faint, Some([0x0e, 0x9a, 0xa0, glass_alpha(SEE_THROUGH_OPACITY)]), "its own colour, faint");
+        assert!(classes.iter().all(|c| *c == crate::gpu::TriClass::Glass));
+        assert_eq!(app.session.doc.model_body_opacity(&app_body(&app, "Block")), 1.0, "the appearance stays opaque");
+        app.run("view.clear_see_through", json!({})).unwrap();
+        assert_eq!(drawn(&app).0, solid, "solid again, as before");
     }
 
     /// A hovered face of a see-through body is lit in the colour the model draws it in: when

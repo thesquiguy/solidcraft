@@ -145,6 +145,7 @@ pub mod rotate_member;
 pub mod save;
 pub mod save_mesh;
 pub mod section;
+pub mod see_through;
 pub mod select;
 pub mod selection;
 pub mod settings;

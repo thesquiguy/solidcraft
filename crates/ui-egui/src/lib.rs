@@ -2558,6 +2558,11 @@ impl SolveApp {
             }
             return;
         }
+        // See-Through (Shift+T) acts on the selection at once: it has no dialog.
+        if id == "view.see_through" {
+            context_menu::toggle_see_through(self);
+            return;
+        }
         // Print Face (Ctrl+B) acts on the selected face at once: it has no dialog.
         if id == "body.print_face" {
             print_face_ui::toggle(self);
@@ -2652,6 +2657,7 @@ impl SolveApp {
                 | "view.grid"
                 | "view.ground_shadow"
                 | "view.navigation_bar"
+                | "view.clear_see_through"
                 | "view.browser"
                 | "view.next_tab"
                 | "view.previous_tab"

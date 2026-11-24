@@ -959,6 +959,7 @@ fn viewport_items(app: &SolveApp) -> Vec<Item> {
             can_unisolate || !app.session.visibility.hidden_sketches.is_empty() || !app.session.visibility.hidden_folders.is_empty();
         v.push(act("ui.showAll", "Show All", "eye").on(anything_hidden));
         v.push(act("ui.showAll", "Unisolate", "eye").on(can_unisolate));
+        v.push(cmd(app, "view.clear_see_through", "Clear See-Through").with(json!({})).on(!app.session.see_through.is_empty()));
         v.push(Item::sep());
         v.push(cmd(app, "solid.extrude", "Extrude"));
         v.push(cmd(app, "solid.fillet", "Fillet"));
@@ -1012,6 +1013,7 @@ fn body_items(app: &SolveApp, bodies: &[String], browser: bool) -> Vec<Item> {
         act(if all_hidden { "ui.show" } else { "ui.hide" }, "Show/Hide", "eye").key("V").with(json!({ "bodies": names })),
         act("ui.lock", if locked { "Unlock" } else { "Lock" }, "ground").with(json!({ "bodies": names })),
         act("ui.isolate", "Isolate", "body").with(json!({ "bodies": names })),
+        cmd(app, "view.see_through", "See-Through").with(json!({ "bodies": names })),
     ];
     if browser {
         let at = v.len() - 1;
@@ -1277,6 +1279,8 @@ fn occurrence_items(app: &SolveApp, path: &[u64]) -> Vec<Item> {
             item.id = "ui.isolateOccurrence".into();
             item.params = Some(json!({"path": path}));
         }
+        // This placement's bodies only, not those of the component's other placements.
+        "view.see_through" => item.params = Some(json!({"paths": [path]})),
         "ui.export" | "ui.saveMesh" | "ui.sendToSlicer" => item.params = Some(json!({"bodies": bodies})),
         // Expand Below and Collapse Below fold this placement's branch; Collapse All keeps the
         // whole tree.
@@ -1463,6 +1467,7 @@ fn component_items(app: &SolveApp, id: u64) -> Vec<Item> {
         v.push(act("ui.showAll", "Show All Bodies", "eye"));
     }
     v.push(act("ui.isolate", "Isolate", "body").with(json!({ "bodies": names })).on(!bodies.is_empty() && id != 0));
+    v.push(cmd(app, "view.see_through", "See-Through").with(json!({ "bodies": names })).on(!bodies.is_empty()));
     v.push(zoom_item(bodies.iter().map(|name| Sel::Body { name: name.clone() }).collect(), !bodies.is_empty()));
     v.push(Item::sep());
     let mut organize = vec![act("ui.newGroup", "New Group", "folder").with(json!({ "component": id }))];
@@ -2608,6 +2613,30 @@ pub fn toggle_visibility(app: &mut SolveApp) {
     }
     for c in canvases {
         let _ = app.run("canvas.edit", json!({ "canvas": c, "visible": !hide }));
+    }
+}
+
+/// See-Through (Shift+T) on what is selected: the selected bodies (and those of selected faces,
+/// edges and vertices), the components picked in the Browser and the selected placements. All
+/// see-through already: solid again (#16384).
+pub fn toggle_see_through(app: &mut SolveApp) {
+    let mut bodies = touched_bodies(app);
+    for c in app.tree.picked_components.clone() {
+        bodies.extend(component_bodies(app, c));
+    }
+    let paths: Vec<Vec<u64>> =
+        app.session.selection.iter().filter_map(|s| if let Sel::Occurrence { path } = s { Some(path.clone()) } else { None }).collect();
+    if bodies.is_empty() && paths.is_empty() {
+        let why = app.tr("ui.see_through_none").to_string();
+        app.set_status(why, true);
+        return;
+    }
+    let mut p = json!({ "bodies": bodies });
+    if !paths.is_empty() {
+        p["paths"] = json!(paths);
+    }
+    if let Err(why) = app.run("view.see_through", p) {
+        app.set_status(why, true);
     }
 }
 
