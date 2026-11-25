@@ -371,6 +371,10 @@ crate::dialog_descriptor::dialog_descriptors! {
                 flip: bool,
                 /// Hatch the cut faces.
                 hatch: bool,
+                /// Section Only: show only the flat cut face, the rest of every body hidden.
+                only: bool,
+                /// Draw the cut's outlines.
+                outlines: bool,
                 /// Add the plane to the section on show instead of replacing it.
                 add: bool,
                 /// Move this plane of the section, keeping the others (Edit on several planes).
@@ -1131,7 +1135,15 @@ impl Dialog {
                 Dialog::new(Kind::Material { index: usize::MAX, editor: Default::default() }, vec![SelInput::new("Bodies", BODIES, true)])
             }
             "inspect.section" => Dialog::new(
-                Kind::Section { offset: length_default(s, "0"), flip: false, hatch: true, add: false, edit: None },
+                Kind::Section {
+                    offset: length_default(s, "0"),
+                    flip: false,
+                    hatch: true,
+                    only: s.section_only && section_on(s),
+                    outlines: s.section_outlines || !section_on(s),
+                    add: false,
+                    edit: None,
+                },
                 vec![SelInput::new("Plane", PLANES | PLANAR_FACES, false)],
             ),
             "inspect.measure" => Dialog::new(
@@ -5991,6 +6003,11 @@ fn edges_by_body(s: &Session, picks: &[Sel]) -> Vec<(String, Vec<Vec3>)> {
     groups
 }
 
+/// Whether a section is on: planes on show or hidden.
+fn section_on(s: &Session) -> bool {
+    !s.section.is_empty() || !s.section_hidden.is_empty()
+}
+
 /// Section Analysis with a section on and no plane picked: OK turns the section off (unless the
 /// plane is to be added to it or moves one of it: `keeps`).
 fn section_turns_off(s: &Session, keeps: bool, inputs: &[selection::SelInput]) -> bool {
@@ -6162,17 +6179,22 @@ pub fn edit_section_plane(app: &mut SolveApp, plane: Option<u64>) {
     let section_hatch = app.session.section_hatch;
     let geometry = app.preferences.viewport_section_status;
     let Some(d) = app.dialog.as_mut().filter(|d| matches!(d.kind, Kind::Section { .. })) else { return };
+    // Section Only and the outlines stay as the section shows them.
+    let (only, outlines) = match d.kind {
+        Kind::Section { only, outlines, .. } => (only, outlines),
+        _ => (false, true),
+    };
     match last {
         Some(last) => {
             let hatch = if edit.is_some() { section_hatch } else { last.hatch };
-            d.kind = Kind::Section { offset: last.offset, flip: last.flip, hatch, add: false, edit };
+            d.kind = Kind::Section { offset: last.offset, flip: last.flip, hatch, only, outlines, add: false, edit };
             if let Some(input) = d.inputs.first_mut() {
                 input.items = last.plane;
             }
         }
         None if geometry => section_from_geometry(d, plane, section_hatch, edit),
         None if edit.is_some() => {
-            d.kind = Kind::Section { offset: length_default(&app.session, "0"), flip: false, hatch: section_hatch, add: false, edit }
+            d.kind = Kind::Section { offset: length_default(&app.session, "0"), flip: false, hatch: section_hatch, only, outlines, add: false, edit }
         }
         None => {}
     }
@@ -6186,7 +6208,11 @@ fn section_from_geometry(d: &mut Dialog, plane: solidcraft_engine::SectionPlane,
     let Some((_, distance, canonical)) = crate::viewport_status::section_coordinates(o, n) else { return };
     let flip = n.iter().zip(canonical).map(|(a, b)| a * b).sum::<f64>() < 0.0;
     // A positive distance moves the cut against the normal.
-    d.kind = Kind::Section { offset: format!("{} mm", 0.0 - distance), flip, hatch, add: false, edit };
+    let (only, outlines) = match d.kind {
+        Kind::Section { only, outlines, .. } => (only, outlines),
+        _ => (false, true),
+    };
+    d.kind = Kind::Section { offset: format!("{} mm", 0.0 - distance), flip, hatch, only, outlines, add: false, edit };
     if let Some(input) = d.inputs.first_mut() {
         input.items.clear();
     }
@@ -7163,7 +7189,7 @@ fn dialog_commands(app: &SolveApp, d: &Dialog) -> Result<Vec<(String, Value)>, S
             let name = s.doc.material_names().get(*index).cloned().ok_or_else(|| solidcraft_ui_text::tr("material.selection.choose").to_string())?;
             ("material.assign", json!({"bodies": sels(d, 0).body_names(), "material": name}))
         }
-        Kind::Section { offset, flip, hatch, add, edit } => {
+        Kind::Section { offset, flip, hatch, only, outlines, add, edit } => {
             if section_turns_off(s, *add || edit.is_some() || d.extra.contains_key("plane"), &d.inputs) {
                 return Ok(vec![("inspect.section".into(), json!({"clear": true}))]);
             }
@@ -7191,7 +7217,7 @@ fn dialog_commands(app: &SolveApp, d: &Dialog) -> Result<Vec<(String, Value)>, S
                 }
                 _ => return Err("pick a plane or a planar face".into()),
             };
-            let mut p = json!({"plane": plane, "offset": offset, "flip": flip, "hatch": hatch});
+            let mut p = json!({"plane": plane, "offset": offset, "flip": flip, "hatch": hatch, "only": only, "outlines": outlines});
             if let Some(id) = edit {
                 p["replace"] = json!(id);
             } else if *add {

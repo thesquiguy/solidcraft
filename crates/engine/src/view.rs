@@ -860,29 +860,36 @@ pub fn scene(s: &Session, cam: &Camera) -> Result<Scene> {
     } else {
         0.0
     };
-    scene_with_section(s, cam, &shown_section(&s.section, s.section_only, size))
+    scene_with_section(s, cam, &shown_section(&s.section, s.section_only, slab_depth(size)))
 }
 
-/// How thick Section Only's slab is for a scene reaching `size` millimetres, in millimetres: a
-/// few thousandths of the scene, a pixel or two edge-on, but past the slack the renderers clip
-/// and cap a section with (the shaders' `clip_slack`, the CPU picture's cap margin of a
-/// thousandth of the scene), so a view ray still crosses the slab and the cut's outline, drawn
-/// on the first plane, stays in front of the cut face.
-fn slab_depth(size: f64) -> f64 {
+/// How thick Section Only's slab is in a CPU picture ([`solidcraft_viewport::render`]) of a scene
+/// reaching `size` millimetres, in millimetres: a few thousandths of the scene, a pixel or two
+/// edge-on, but past that picture's cap margin of a thousandth of the scene, so a view ray still
+/// crosses the slab and the cut's outline, drawn on the first plane, stays in front of the cut face.
+pub fn slab_depth(size: f64) -> f64 {
     3e-3 * (1.0 + size.abs())
 }
 
+/// How thick Section Only's slab is on the GPU, in millimetres, for a model reaching `reach`
+/// millimetres from the world origin: ten times the slack the viewport's shader keeps a plane
+/// with (`clip_slack`, a hundred-thousandth of the plane's and the point's distance from the
+/// origin), so the slab keeps a view ray's crossing however far from the origin the model lies,
+/// and no thicker, so nothing of its depth shows, even up close.
+pub fn gpu_slab_depth(reach: f64) -> f64 {
+    1e-4 * (1.0 + reach.abs())
+}
+
 /// The planes a section cuts the view with: `planes` as they are, or for Section Only (`only`)
-/// in a scene reaching `size` millimetres ([`slab_depth`])
-/// with a plane just behind the first, facing the other way. The two keep a slab too thin to
+/// with a plane `depth` millimetres behind the first ([`slab_depth`], [`gpu_slab_depth`]), facing the other way. The two keep a slab too thin to
 /// see, so the view shows only the first plane's cut face (both sides of it), trimmed by the
 /// other planes, and hides the rest of every body. The new plane takes the first's id, so its
 /// cut has the same hatch. With every place taken, the planes stay as they are.
-pub fn shown_section(planes: &[SectionPlane], only: bool, size: f64) -> Vec<SectionPlane> {
+pub fn shown_section(planes: &[SectionPlane], only: bool, depth: f64) -> Vec<SectionPlane> {
     let mut shown = planes.to_vec();
     if let Some(first) = planes.first().filter(|_| only && planes.len() < MAX_SECTION_PLANES) {
         let n = first.normal;
-        let back = SectionPlane { id: first.id, origin: first.origin - n * slab_depth(size), normal: -n };
+        let back = SectionPlane { id: first.id, origin: first.origin - n * depth, normal: -n };
         shown.insert(1, back);
     }
     shown
@@ -1882,8 +1889,8 @@ mod tests {
         };
         s.execute("inspect.section", &json!({"plane": {"origin": [0, 15, 0], "normal": [0, -1, 0]}})).unwrap();
         let (cut_warm, cut_drawn) = count(&picture(&s, &cam));
-        let r = s.execute("inspect.section_only", &json!({})).unwrap();
-        assert_eq!(r["on"], json!(true));
+        let r = s.execute("inspect.section", &json!({"plane": {"origin": [0, 15, 0], "normal": [0, -1, 0]}, "only": true})).unwrap();
+        assert_eq!(r["section"]["only"], json!(true));
         let sc = scene(&s, &cam).unwrap();
         assert_eq!(sc.clip.len(), 2, "the section's plane and the slab's back");
         let (n, d) = (sc.clip[1].0, sc.clip[1].1);
@@ -1898,41 +1905,43 @@ mod tests {
         let behind = Camera { yaw: cam.yaw + std::f64::consts::PI, ..cam.clone() };
         assert!(count(&picture(&s, &behind)).0 > cut_warm / 2, "seen from behind");
         // Off again, and back to the whole cut.
-        assert_eq!(s.execute("inspect.section_only", &json!({"on": false})).unwrap()["on"], json!(false));
+        let r = s.execute("inspect.section", &json!({"replace": 1, "plane": {"origin": [0, 15, 0], "normal": [0, -1, 0]}, "only": false})).unwrap();
+        assert_eq!(r["section"]["only"], json!(false));
         assert_eq!(count(&picture(&s, &cam)), (cut_warm, cut_drawn));
     }
 
-    /// Section Only needs a section, turns off with it, and undoes with the section.
+    /// Section Only and the outlines are options of the section: off and on for a new one, kept
+    /// when a plane is added or moved, and undone with it.
     #[test]
-    fn section_only_follows_the_section() {
+    fn section_only_and_outlines_are_section_options() {
         let mut s = Session::default();
         s.execute("solid.box", &json!({"length": 40, "width": 30, "height": 20})).unwrap();
-        assert!(s.execute("inspect.section_only", &json!({"on": true})).is_err());
-        assert!(!s.section_only);
-        s.execute("inspect.section", &json!({"plane": "XY", "at": 5})).unwrap();
-        s.execute("inspect.section_only", &json!({"on": true})).unwrap();
-        // A second plane trims the slice; the slab's back goes in right behind the first.
-        s.execute("inspect.section", &json!({"plane": "YZ", "at": 10, "add": true})).unwrap();
-        let shown = shown_section(&s.section, s.section_only, 100.0);
+        let r = s.execute("inspect.section", &json!({"plane": "XY", "at": 5})).unwrap();
+        assert_eq!((&r["section"]["only"], &r["section"]["outlines"]), (&json!(false), &json!(true)));
+        assert!(s.execute("inspect.section", &json!({"plane": "XY", "at": 5, "only": 1})).is_err());
+        s.execute("inspect.section", &json!({"plane": "XY", "at": 5, "only": true, "outlines": false})).unwrap();
+        assert!(s.section_only && !s.section_outlines);
+        // A second plane trims the slice and keeps both; the slab's back goes in right behind the first.
+        let r = s.execute("inspect.section", &json!({"plane": "YZ", "at": 10, "add": true})).unwrap();
+        assert_eq!((&r["section"]["only"], &r["section"]["outlines"]), (&json!(true), &json!(false)));
+        let shown = shown_section(&s.section, s.section_only, 0.3);
         assert_eq!(shown.len(), 3);
         assert_eq!((shown[1].id, shown[1].normal), (shown[0].id, -shown[0].normal));
-        // `on` given again changes nothing.
-        assert_eq!(s.execute("inspect.section_only", &json!({"on": true})).unwrap()["on"], json!(true));
-        assert!(s.execute("inspect.section_only", &json!({"on": 1})).is_err());
         s.execute("edit.undo", &json!({})).unwrap();
         assert!(s.section_only && s.section.len() == 1, "undo takes back the plane added");
         s.execute("edit.undo", &json!({})).unwrap();
-        assert!(!s.section_only && s.section.len() == 1, "and then Section Only");
-        s.execute("inspect.section_only", &json!({})).unwrap();
-        // Hiding the Analysis folder keeps it; turning the section off ends it.
+        assert!(!s.section_only && s.section_outlines && s.section.len() == 1, "and then the options");
+        s.execute("inspect.section", &json!({"plane": "XY", "at": 5, "only": true})).unwrap();
+        // Hiding the Analysis folder keeps it; a new section starts without it.
         s.execute("inspect.section", &json!({"folder": false})).unwrap();
-        assert!(s.section_only && shown_section(&s.section, true, 100.0).is_empty());
+        assert!(s.section_only && shown_section(&s.section, true, 0.3).is_empty());
         s.execute("inspect.section", &json!({"folder": true})).unwrap();
         s.execute("inspect.section", &json!({"clear": true})).unwrap();
-        assert!(!s.section_only);
+        s.execute("inspect.section", &json!({"plane": "XY", "at": 5, "add": true})).unwrap();
+        assert!(!s.section_only && s.section_outlines, "a section started by add has the defaults");
         // With every place taken, the planes stay as they are.
         let full: Vec<SectionPlane> = (1..=MAX_SECTION_PLANES as u64).map(|id| SectionPlane { id, origin: Vec3::ZERO, normal: Vec3::Z }).collect();
-        assert_eq!(shown_section(&full, true, 100.0), full);
+        assert_eq!(shown_section(&full, true, 0.3), full);
     }
 
     /// The section's cut face hides what lies inside the body behind it (it is drawn at the

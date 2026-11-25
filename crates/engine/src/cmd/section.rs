@@ -12,7 +12,6 @@ use crate::schema::{TypedContract, output_schema_for, section as contract};
 use crate::view::MAX_SECTION_PLANES;
 use crate::{Result, SectionPlane, Session};
 const SECTION: TypedContract<contract::SectionParams> = TypedContract::new();
-const SECTION_ONLY: TypedContract<contract::SectionOnlyParams> = TypedContract::new();
 
 pub static COMMANDS: &[CommandSpec] = &[
     CommandSpec::new("inspect.section", "Section Analysis", crate::checked!("inspect.section", section))
@@ -23,6 +22,8 @@ pub static COMMANDS: &[CommandSpec] = &[
          (XY: -Z, XZ: -Y, YZ: -X; negative moves it the other way); \
          at?: expr, the cut's world coordinate on the named plane's axis (XY: Z, XZ: Y, YZ: X), instead of offset; \
          flip?: bool (hide the other side; the plane stays where it is); hatch?: bool (hatch the cut faces, in each body's colour; default true, or as it was with add or replace); \
+         only?: bool (Section Only: show only the flat cut face, on the first plane on show and trimmed by the others, and hide the rest of every body; \
+         default false, or as it was with add or replace); outlines?: bool (draw the cut's outlines; default true, or as they were with add or replace); \
          add?: bool (add the plane to the section, starting one if there is none, instead of replacing it: each plane hides what \
          lies on its positive side, so the section keeps only what every plane keeps, a quarter for two square planes; at most 6 planes, hidden ones included; \
          the new plane takes the lowest id no plane has); \
@@ -31,26 +32,15 @@ pub static COMMANDS: &[CommandSpec] = &[
          section and cuts nothing until shown); or folder: false (hide the Analysis folder: the planes on show stop cutting and \
          come back with folder: true; while it is hidden, hide and show change only which planes come back, and a plane added or \
          moved shows it again, with them); or clear: true (all planes). Each change is one undo step; the design is untouched. \
-         Returns section: the plane made {id, origin, normal, hatch, and for a named plane axis and at} \
+         Returns section: the plane made {id, origin, normal, hatch, only, outlines, and for a named plane axis and at} \
          (null when the section is off, or for remove, hide, show and folder), planes: [{id, origin, normal, hidden}], every plane \
          of the section by id, and folder: null, or while the folder is hidden the ids that come back with it",
-    ),
-    CommandSpec::new("inspect.section_only", "Section Only", crate::checked!("inspect.section_only", section_only))
-    .contract(&SECTION_ONLY).output(output_schema_for::<contract::SectionOnlyResult>)
-    .at("SOLID", "INSPECT").icon("section").key("Alt+S").enabled(section_on).params(
-        "on?: bool (true: the Section Analysis shows only its cut face, with no depth, on its first plane on show, \
-         trimmed by its other planes, and hides the rest of every body; false: the whole cut model again; left out: it turns over). \
-         Needs a Section Analysis that is on; turns off with it. View only: the design is untouched. Returns on: whether it is now on",
     ),
 ];
 
 fn section(s: &mut Session, p: &Value) -> Result<Value> {
     let before: Vec<u64> = s.section.iter().map(|c| c.id).collect();
     let made = change(s, p)?;
-    // Section Only turns off with the section.
-    if s.section.is_empty() && s.section_hidden.is_empty() {
-        s.section_only = false;
-    }
     // A plane on show shows the folder again, with the planes it hid.
     if !s.section.is_empty()
         && let Some(back) = s.section_folder.take()
@@ -69,28 +59,6 @@ fn section(s: &mut Session, p: &Value) -> Result<Value> {
         s.status_activated(crate::status_items::StatusId::Section);
     }
     Ok(reply(s, made))
-}
-
-/// Section Only: the section shows only its cut face, or the whole cut model again.
-fn section_only(s: &mut Session, p: &Value) -> Result<Value> {
-    let cmd = "inspect.section_only";
-    let on = match p.get("on") {
-        None | Some(Value::Null) => !s.section_only,
-        Some(v) => v.as_bool().ok_or_else(|| bad(cmd, "`on` must be true or false"))?,
-    };
-    if on {
-        section_on(s).map_err(|e| bad(cmd, e))?;
-    }
-    if on != s.section_only {
-        s.section_only = on;
-        s.refresh_display();
-    }
-    Ok(json!({ "on": s.section_only }))
-}
-
-/// Whether Section Only has a section to show: one with a plane on show.
-fn section_on(s: &Session) -> std::result::Result<(), String> {
-    if s.section.is_empty() { Err("Section Only needs a Section Analysis: start one first".into()) } else { Ok(()) }
 }
 
 /// Move the planes `ids` names between those on show and the hidden ones.
@@ -206,6 +174,16 @@ fn change(s: &mut Session, p: &Value) -> Result<Value> {
         None if add || replace.is_some() => s.section_hatch,
         None => true,
     };
+    // Section Only and the outlines: as given, else as they were when a section on changes, else
+    // off and on.
+    let had = !s.section.is_empty() || !s.section_hidden.is_empty();
+    let kept = |key: &str, was: bool, new: bool| match bool_(p, key) {
+        Some(v) => v,
+        None if had && (add || replace.is_some()) => was,
+        None => new,
+    };
+    let only = kept("only", s.section_only, false);
+    let outlines = kept("outlines", s.section_outlines, true);
     let tol = 1e-9 * (1.0 + origin.len());
     let twice = |s: &Session| {
         s.section
@@ -241,8 +219,10 @@ fn change(s: &mut Session, p: &Value) -> Result<Value> {
         1
     };
     s.section_hatch = hatch;
+    s.section_only = only;
+    s.section_outlines = outlines;
     s.refresh_display();
-    let mut made = json!({"id": id, "origin": origin, "normal": normal, "hatch": hatch});
+    let mut made = json!({"id": id, "origin": origin, "normal": normal, "hatch": hatch, "only": only, "outlines": outlines});
     if let Some(i) = axis {
         made["axis"] = json!(["X", "Y", "Z"].get(i).copied().unwrap_or("?"));
         made["at"] = json!(axis_component(origin, i));
