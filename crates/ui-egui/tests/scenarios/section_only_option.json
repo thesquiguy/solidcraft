@@ -1,0 +1,20 @@
+[
+  {"note": "Section Only is an option of the Section Analysis dialog, ticked while the section is set up, before any section is on: OK makes the section show only its cut face. Each query below moves plane 1 onto itself and reads the options it kept."},
+  {"call": "ui.prefs", "params": {"language": "en"}},
+  {"call": "engine.execute", "params": {"command": "solid.box", "params": {"length": 40, "width": 30, "height": 20}}},
+  {"start": "inspect.section"},
+  {"frames": 4},
+  {"click": {"plane": "XZ"}},
+  {"frames": 2},
+  {"widget": "Section Only"},
+  {"widget": "Outlines"},
+  {"frames": 2},
+  {"click": {"handle": "dialog:OK"}},
+  {"until": {"dialog": null}},
+  {"expect": {"errors": 0}},
+  {"expect": {"query": {"command": "inspect.section", "params": {"replace": 1, "plane": "XZ"}, "path": ["section", "only"], "value": true}}},
+  {"expect": {"query": {"command": "inspect.section", "params": {"replace": 1, "plane": "XZ"}, "path": ["section", "outlines"], "value": false}}},
+  {"call": "engine.execute", "params": {"command": "inspect.section", "params": {"clear": true}}},
+  {"frames": 2},
+  {"expect": {"errors": 0}}
+]

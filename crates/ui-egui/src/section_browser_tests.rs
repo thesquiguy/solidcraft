@@ -845,24 +845,29 @@ fn hiding_a_plane_leaves_the_others_hatch() {
     assert_eq!(scene.clip_hatch, [1]);
 }
 
-/// Section Only from a cut face's menu: the section then shows only its cut face, which still
-/// gives the cut face's menu, and the same item turns it off. A plane's row menu has it too.
+/// The dialog's Section Only and Outlines options work while the section is set up, before any
+/// section is on: the preview shows only the cut face, OK makes the section with both, and
+/// editing it starts from them.
 #[test]
-fn section_only_from_the_cut_face_and_the_plane_row() {
+fn section_only_and_outlines_are_dialog_options() {
     let mut h = box_in_view();
-    h.app.run("inspect.section", json!({"plane": {"origin": [0, 15, 0], "normal": [0, -1, 0]}})).unwrap();
-    h.frames(3);
-    assert_eq!(crate::keymap::display_for(&h.app, "inspect.section_only").as_deref(), Some("Alt+S"));
-    let labels = menu_at(&mut h, [20.0, 15.0, 10.0]);
-    assert!(labels.iter().any(|l| l == "Section Only"), "the cut face's menu: {labels:?}");
-    pick(&mut h, "Section Only");
-    assert!(h.app.session.section_only);
-    assert_eq!(crate::viewport::section_planes(&h.app).len(), 2, "the plane and the slab's back");
-    h.frames(3);
-    let labels = menu_at(&mut h, [20.0, 15.0, 10.0]);
-    assert!(labels.iter().any(|l| l == "Turn Off Section View"), "the slice is still the cut face: {labels:?}");
-    pick(&mut h, "Section Only");
-    assert!(!h.app.session.section_only);
-    menu(&mut h, 1, "Section Only");
-    assert!(h.app.session.section_only, "from the plane's row");
+    h.app.session.selection = vec![solidcraft_engine::Sel::Plane { name: "XZ".into() }];
+    h.app.start("inspect.section");
+    set_offset(&mut h, "-15 mm");
+    h.frames(2);
+    assert_eq!(crate::viewport::section_planes(&h.app).len(), 1);
+    assert!(crate::viewport::section_outlines_shown(&h.app), "a new section draws its outlines");
+    if let Some(crate::dialogs::Kind::Section { only, outlines, .. }) = h.app.dialog.as_mut().map(|d| &mut d.kind) {
+        (*only, *outlines) = (true, false);
+    }
+    h.frames(2);
+    assert!(h.app.session.section.is_empty(), "nothing is on yet");
+    assert_eq!(crate::viewport::section_planes(&h.app).len(), 2, "the preview: the plane and the slab's back");
+    assert!(!crate::viewport::section_outlines_shown(&h.app), "the preview follows the option");
+    ok(&mut h);
+    assert!(h.app.session.section_only && !h.app.session.section_outlines);
+    assert_eq!(crate::viewport::section_planes(&h.app).len(), 2);
+    menu(&mut h, 1, "Edit Section Analysis");
+    let d = h.app.dialog.as_ref().map(|d| &d.kind);
+    assert!(matches!(d, Some(crate::dialogs::Kind::Section { only: true, outlines: false, .. })), "{d:?}");
 }

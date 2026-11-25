@@ -321,6 +321,10 @@ turned a quarter round where needed, so bodies whose cuts touch never look alike
   and **Distance** move the cut. A positive distance cuts more away: into the part from a face,
   against the normal of a plane (below XY, for instance). A negative one moves the cut the other
   way. **Flip** hides the other side of the plane being edited and leaves it where it is.
+  **Section Only** shows just the cut face, flat, on the first plane on show (trimmed by the
+  others) and hides the rest of every body; **Outlines** draws the cut's outlines in the colour
+  of the model's edges. Both can be set while the section is set up, and the section keeps them
+  when a plane is added or moved.
   With a section on show, the toolbar button turns the section off instead (unless
   Preferences › Interface › **Show viewport section status** is off).
 - While a plane is on show, the view's status shows the section: the first plane on show and

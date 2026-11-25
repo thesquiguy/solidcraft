@@ -23,6 +23,10 @@ pub struct SectionParams {
     pub at: Option<LengthExpr>,
     pub flip: Option<bool>,
     pub hatch: Option<bool>,
+    /// Section Only: show only the flat cut face, the rest of every body hidden (default false, or as it was with add or replace).
+    pub only: Option<bool>,
+    /// Draw the cut's outlines (default true, or as they were with add or replace).
+    pub outlines: Option<bool>,
     pub clear: Option<bool>,
     /// Add the plane to the section instead of replacing it (at most 6 planes).
     pub add: Option<bool>,
@@ -50,6 +54,10 @@ pub struct Section {
     pub origin: [f64; 3],
     pub normal: [f64; 3],
     pub hatch: bool,
+    /// Section Only: only the flat cut face shows.
+    pub only: bool,
+    /// The cut's outlines are drawn.
+    pub outlines: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub axis: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -71,17 +79,4 @@ pub struct SectionPlaneState {
     pub origin: [f64; 3],
     pub normal: [f64; 3],
     pub hidden: bool,
-}
-/// What `inspect.section_only` takes.
-#[derive(Debug, Deserialize, JsonSchema)]
-#[schemars(deny_unknown_fields)]
-pub struct SectionOnlyParams {
-    /// true shows only the cut face, false the whole cut model; left out, it turns over.
-    pub on: Option<bool>,
-}
-/// `inspect.section_only` return.
-#[derive(Serialize, JsonSchema)]
-pub struct SectionOnlyResult {
-    /// Whether the section now shows only its cut face.
-    pub on: bool,
 }

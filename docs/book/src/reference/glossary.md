@@ -594,10 +594,10 @@ are kept, not deleted.
 A Section Analysis that shows only its cut face, with no depth, and hides the rest of every body.
 
 The cut face shows on the section's first plane on show, from both sides, trimmed by the other
-planes. It turns off with the section and changes no geometry.
+planes. It is an option of the section, set in the Section Analysis dialog, and changes no geometry.
 
-- **In SolidCraft:** `inspect.section_only` (`on`); the Session's `section_only`; the Section Only
-  button, its Alt+S key, and the Section Only item of a cut face's menu and a section plane's row.
+- **In SolidCraft:** `inspect.section`'s `only`; the Session's `section_only`; the Section Only
+  option of the Section Analysis dialog.
 - **Don't use:** Slice (the Sketch Palette's switch that cuts the view at the sketch plane),
   cross-section (a drawing's view), section view.
 - **Elsewhere:** zero-thickness section, slice view.

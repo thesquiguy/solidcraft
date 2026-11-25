@@ -2808,8 +2808,9 @@ fn build_scene_published(app: &SolveApp) -> (GpuScene, PublishedBlocks) {
 }
 
 /// Section: the outline of each body where each plane cuts what the section keeps, and where two
-/// planes' cuts meet, in the view's text colour (#4146), and the cut solid bodies' hatches by
-/// part on their palette entries.
+/// planes' cuts meet, in the colour of the model's edges (the view's text colour in wireframe,
+/// #4146) unless the section's Outlines option is off, and the cut solid bodies' hatches by part
+/// on their palette entries.
 fn section_outlines(sc: &mut GpuScene, app: &SolveApp, st: &solidcraft_engine::doc::ModelState) {
     let planes = section_planes(app);
     if planes.is_empty() {
@@ -2817,14 +2818,18 @@ fn section_outlines(sc: &mut GpuScene, app: &SolveApp, st: &solidcraft_engine::d
     }
     let s = &app.session;
     let active_bodies = active_body_names(app);
-    let col = sc.color(c4(Tokens::view().text.gamma_multiply(0.9)));
+    let view = Tokens::view();
+    let col = sc.color(c4(if app.ui.visual_style == 2 { view.text.gamma_multiply(0.9) } else { view.body_edge }));
+    let outlines = section_outlines_shown(app);
     let mut kept = app.viewport.section_index.lock().map(|mut k| std::mem::take(&mut *k)).unwrap_or_default();
     let mut made = std::collections::HashMap::with_capacity(kept.len());
     // The closed solid bodies the section cuts and where it cuts them: their hatches by part.
     let by_part = app.preferences.section_hatch == crate::prefs::SectionHatch::ByPart;
     let mut cuts: Vec<(&str, Vec<(Vec3, Vec3)>)> = Vec::new();
     for b in st.bodies.iter().filter(|b| app.body_visible(&b.name)) {
-        let mesh = b.mesh();
+        // The triangles the view draws the body with (a refined plan's up close), so the
+        // outline lies on the edge of the cap the GPU fills from them.
+        let mesh = shown_mesh(app, b, &active_bodies);
         let key = std::sync::Arc::as_ptr(&mesh) as usize;
         let index = match kept.remove(&key).filter(|(m, _)| std::sync::Arc::ptr_eq(m, &mesh)) {
             Some((_, index)) => index,
@@ -2835,7 +2840,9 @@ fn section_outlines(sc: &mut GpuScene, app: &SolveApp, st: &solidcraft_engine::d
             let own = index.segments(&mesh, cut.origin, cut.normal);
             let creases = solidcraft_engine::view::section_creases(&own, &planes, i, index.nudge());
             for (a, c) in own.into_iter().filter_map(|(a, c)| solidcraft_engine::view::outline_part(a, c, &planes, i)).chain(creases) {
-                sc.line(a.to_f32(), c.to_f32(), col, 1.8, false);
+                if outlines {
+                    sc.line(a.to_f32(), c.to_f32(), col, 1.8, false);
+                }
                 segments.push((a, c));
             }
         }
@@ -5381,15 +5388,18 @@ pub fn section_planes(app: &SolveApp) -> Vec<SectionPlane> {
     {
         return vec![SectionPlane { id: 0, origin, normal }];
     }
-    let only = app.session.section_only;
+    let only = match dialog.map(|d| &d.kind) {
+        Some(crate::dialogs::Kind::Section { only, .. }) => *only,
+        _ => app.session.section_only,
+    };
     // The model's reach from the origin, not the camera's, so zooming leaves the planes as they are.
-    let size = if only {
+    let reach = if only {
         let b = scene_bounds(app);
         if b.is_empty() || !b.diagonal().is_finite() { 50.0 } else { b.diagonal() * 0.5 + b.center().len() }
     } else {
         0.0
     };
-    solidcraft_engine::view::shown_section(&section_cut(app, dialog), only, size)
+    solidcraft_engine::view::shown_section(&section_cut(app, dialog), only, solidcraft_engine::view::gpu_slab_depth(reach))
 }
 
 /// The section's own planes, before Section Only: the open Section Analysis dialog's preview
@@ -5426,6 +5436,15 @@ pub fn section_hatch(app: &SolveApp) -> bool {
     match app.dialog.as_ref().map(|d| &d.kind) {
         Some(crate::dialogs::Kind::Section { hatch, .. }) => *hatch,
         _ => app.session.section_hatch || slice_plane(app).is_some(),
+    }
+}
+
+/// Whether the section [`section_planes`] shows has its cut outlines drawn: an open Section
+/// Analysis dialog's Outlines option, a Slice's always, else the section's own.
+pub fn section_outlines_shown(app: &SolveApp) -> bool {
+    match app.dialog.as_ref().map(|d| &d.kind) {
+        Some(crate::dialogs::Kind::Section { outlines, .. }) => *outlines,
+        _ => app.session.section_outlines || slice_plane(app).is_some(),
     }
 }
 

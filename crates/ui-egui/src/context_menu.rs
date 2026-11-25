@@ -824,7 +824,6 @@ fn viewport_items(app: &SolveApp) -> Vec<Item> {
     if let Some(plane) = app.menu.section_plane.filter(|id| app.session.section.iter().any(|c| c.id == *id)) {
         v.push(act("ui.editSectionView", "Edit Section View", "section").with(json!({ "plane": plane })));
         v.push(act("ui.sectionViewOff", "Turn Off Section View", "section").with(json!({ "plane": plane })));
-        v.push(cmd(app, "inspect.section_only", "Section Only"));
         v.push(Item::sep());
     }
     if app.session.active_sketch.is_some() {
